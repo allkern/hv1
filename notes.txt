@@ -1,0 +1,59 @@
+/*
+        # At startup, the MMU_BASE @ 0x00000000 is configured to map
+        # HEC device 0 (bootrom_chip) to HWINITB @ 0xfffffeff (0x100 bytes)
+        # and HEC device 1 (bootram_chip) to HWINITM @ 0x00000100
+        # MMU binary:
+        #   device_id   base_addr   size        reserved
+        # --------------------------------------------------
+        #   0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f
+        # 0 00 00 00 00 ff ff fe ff 00 00 01 00 00 00 00 00
+        # 1 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+        # 2 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+        # 3 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+        # 4 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+        # 5 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+        # 6 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+        # 7 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+        # 8 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+        # 9 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+        # a 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+        # b 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+        # c 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+        # d 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+        # e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+        # f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+
+    */
+
+    // ld nv0, gp0, nv1, gp1;
+    // ld nv2, gp2, nv3, gp3;
+    // 00000000 -> ld r0, r0
+    // 00xysSrR | 00000000xxxxyyyyssssSrrrrR------ -> ld rX, (rY (<</>>) s) ROT(L/R) r
+    // 0oxiiiis | 0000001Sxxxxiiiiiiiiiiiiiiiissss -> li rX, i (<</>>) s;
+    // 0oxiiiir | 0000010Rxxxxiiiiiiiiiiiiiiiirrrr -> li rX, i ROT(L/R) r;
+    // 0oxysSrB | 00001000xxxxyyyyssssSrrrrR------ -> st *(((rY (<</>>) s) ROT(L/R) r)), rX 
+    // 0oxysSrB | 00001000xxxxyyyyssssSrrrrRbbbbB- -> st *rX, *(((rY (<</>>) s) ROT(L/R) r) + (br (<</>>) b))
+    // 0oxysSrB | 00001000xxxxyyyyssssSrrrrRbbbbB- -> si *rX, i (<</>>) s;
+    // f0xyzcf- | 11110000xxxxyyyyzzzzccccf------- -> add(c)
+    // f1xyzcf- | 11110001xxxxyyyyzzzzccccf------- -> sub(c)
+    // f2xyzcf- | 11110010xxxxyyyyzzzzccccf------- -> mul(c)
+    // f3xyzcf- | 11110011xxxxyyyyzzzzccccf------- -> div(c)
+    // f4xyzcf- | 11110100xxxxyyyyzzzzccccf------- -> and(c)
+    // f5xyzcf- | 11110101xxxxyyyyzzzzccccf------- -> or(c)
+    // f6xyzcf- | 11110110xxxxyyyyzzzzccccf------- -> xor(c)
+    // f7xyzcf- | 11110111xxxxyyyyzzzzccccf------- -> not(c)
+    // f8xyzcf- | 11111000xxxxyyyyzzzzccccf------- -> saX(c)
+    // f9xyzcf- | 11111001xxxxyyyyzzzzccccf------- -> slX(c)
+    // faxyzcf- | 11111010xxxxyyyyzzzzccccf------- -> raX(c)
+    // fbxyzcf- | 11111011xxxxyyyyzzzzccccf------- -> rlX(c)
+    // fcxyzcf- | 11111100xxxxyyyyzzzzccccf------- -> saXc(CC)(f)
+    // fdxyzcf- | 11111101xxxxyyyyzzzzccccf------- -> slXc(CC)(f)
+    // fexyzcf- | 11111110xxxxyyyyzzzzccccf------- -> raXc(CC)(f)
+    // ffxyzcf- | 11111111xxxxyyyyzzzzccccf------- -> rlXc(CC)(f) rlrc %pc, %pc, %pc 
+    // acxsiiii, ac0fffff -> li gp0, ffff0000
+    // li r0, ffffffff -> li gp0, (0xffff << 16); or gp0, 0xffff
+
+// normal loads
+// ld rX, rY;
+// normal store
+// st rX, [rY];
