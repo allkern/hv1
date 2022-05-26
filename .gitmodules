@@ -1,3 +1,3 @@
-[submodule "hyrisc-as\\"]
-	path = hyrisc-as\\
+[submodule "hyrisc-as\"]
+	path = hyrisc-as\
 	url = https://github.com/Lycoder/hyrisc-as/
