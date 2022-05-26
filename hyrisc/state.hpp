@@ -1,4 +1,4 @@
-#include "types.hpp"
+#pragma once
 
 typedef uint8_t  hyu8_t;
 typedef uint16_t hyu16_t;
@@ -41,8 +41,8 @@ bool hysignal_get(hysignal_t* sig) {
         case hysignal_t::LEVEL_HIGH: return   sig->prev &&  sig->current;
         case hysignal_t::EDGE      : return (!sig->prev &&  sig->current) || ( sig->prev && !sig->current);
         case hysignal_t::LEVEL_ANY : return (!sig->prev && !sig->current) || ( sig->prev &&  sig->current);
-        case hysignal_t::HIGH      : return sig->current;
-        case hysignal_t::LOW       : return !sig->current;
+        case hysignal_t::HIGH      : return   sig->current;
+        case hysignal_t::LOW       : return  !sig->current;
     }
 
     return false;
@@ -56,6 +56,8 @@ bool hysignal_get(hysignal_t* sig, hysignal_t::trigger_t trigger) {
         case hysignal_t::LEVEL_HIGH: return   sig->prev &&  sig->current;
         case hysignal_t::EDGE      : return (!sig->prev &&  sig->current) || ( sig->prev && !sig->current);
         case hysignal_t::LEVEL_ANY : return (!sig->prev && !sig->current) || ( sig->prev &&  sig->current);
+        case hysignal_t::HIGH      : return   sig->current;
+        case hysignal_t::LOW       : return  !sig->current;
     }
 
     return false;
@@ -63,30 +65,31 @@ bool hysignal_get(hysignal_t* sig, hysignal_t::trigger_t trigger) {
 
 // Bus Controller Interface
 struct hyrisc_bci_t {
-    hysignal_t busirq;  // BUSIRQ pin (Bus IRQ on Error)
-    hysignal_t busack;  // BUSACK pin (Bus Acknowledge)
-    hysignal_t rw;      // RW pin (Read/Write)
-    hyu32_t    a;       // A0-A31 pins (Address bus)
-    hyu32_t    d;       // D0-D31 pins (Data bus)
-    hyu8_t     be;      // BE0-BE8 pins (Bus Error)
-    hyu8_t     s;       // S0-S1 pins (Data size)
+    hyu32_t  a;       // A0-A31 pins (Address bus)
+    hyu32_t  d;       // D0-D31 pins (Data bus)
+    hybool_t busirq;  // BUSIRQ pin (Bus IRQ on Error)
+    hybool_t busack;  // BUSACK pin (Bus Acknowledge)
+    hybool_t busreq;  // BUSREQ pin (Bus Request)
+    hybool_t rw;      // RW pin (Read/Write)
+    hyu8_t   be;      // BE0-BE8 pins (Bus Error)
+    hyu8_t   s;       // S0-S1 pins (Data size)
 };
 
 // Internal PIC Interface
 struct hyrisc_pic_t {
-    hysignal_t irq;     // IRQ pin (IRQ trigger)
-    hysignal_t irqack;  // IRQACK pin (IRQ Acknowledge)
-    hyu32_t    v;       // V0-V31 pins (IRQ Vector)
+    hyu32_t  v;       // V0-V31 pins (IRQ Vector)
+    hybool_t irq;     // IRQ pin (IRQ trigger)
+    hybool_t irqack;  // IRQACK pin (IRQ Acknowledge)
 };
 
 // External pins and buses
 struct hyrisc_ext_t {
-    hyrisc_bci_t    bci;
-    hyrisc_pic_t    pic;
-    hysignal_t*     clk;            // CLK pin (Clock Input)
-    hysignal_t      reset;          // RESET pin
-    hysignal_t      freeze;         // FREEZE pin
-    hyfloat_t       vcc;
+    hyrisc_bci_t bci;
+    hyrisc_pic_t pic;
+    //hysignal_t*     clk;       // CLK pin (Clock Input)
+    hybool_t     reset;          // RESET pin
+    hybool_t     freeze;         // FREEZE pin
+    hyfloat_t    vcc;
 };
 
 // Internal data and latches

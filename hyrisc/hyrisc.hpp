@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../log.hpp"
+
 #include <cstdint>
 #include <array>
 #include <cstring>
@@ -18,25 +20,36 @@ enum hyrisc_register_names_t {
     a0  , a1  , a2  , rr0 ,
     a3  , a4  , a5  , rr1 ,
     lr0 , lr1 , lr2 , lr3 ,
-    lr  , br  , sp  , pc
+    ir  , br  , sp  , pc
 };
 
 void hyrisc_bci_update(hyrisc_t* proc) {
     // If there was a bus error on last clock, then 
-    if (proc->ext.bci.be && hysignal_get(&proc->ext.bci.busirq, hysignal_t::HIGH)) {
+    if (proc->ext.bci.busreq && proc->ext.bci.busack) {
+        proc->ext.bci.busreq = false;
+        proc->ext.bci.busack = false;
+
+        return;
+    }
+
+    if (!proc->ext.bci.busirq) return;
+
+    bool open_bus = proc->ext.bci.busreq && !proc->ext.bci.busack;
+
+    if (proc->ext.bci.be || open_bus) {
         // If Bus error IRQ has already been acknowledged, then
         // clear bus error and lower IRQ
-        if (hysignal_get(&proc->ext.pic.irqack)) {
+        if (proc->ext.pic.irqack) {
             proc->ext.bci.be = 0x0;
 
-            hysignal_set(&proc->ext.pic.irqack, false);
-            hysignal_set(&proc->ext.pic.irq, false);
+            proc->ext.pic.irqack = false;
+            proc->ext.pic.irq = false;
 
             return;
         }
 
-        hysignal_set(&proc->ext.pic.irqack, false);
-        hysignal_set(&proc->ext.pic.irq, true);
+        proc->ext.pic.irqack = false;
+        proc->ext.pic.irq = true;
 
         // 256 bytes to handle each bus error mapped on f0000000-f000ffff
         proc->ext.pic.v = 0xf0000000 | (proc->ext.bci.be << 8);
@@ -45,33 +58,31 @@ void hyrisc_bci_update(hyrisc_t* proc) {
 
 void hyrisc_reset(hyrisc_t* proc) {
     std::memset(&proc->internal, 0, sizeof(proc->internal));
+    std::memset(&proc->ext, 0, sizeof(proc->ext));
 
+    proc->ext.bci.busirq = true;
     proc->internal.instruction = 0xffffffff;
 }
 
 void hyrisc_handle_signals(hyrisc_t* proc) {
-    // Get signals
-    bool reset  = hysignal_get(&proc->ext.reset, hysignal_t::HIGH);
-    bool freeze = hysignal_get(&proc->ext.freeze, hysignal_t::HIGH);
-    bool irq    = hysignal_get(&proc->ext.pic.irq, hysignal_t::RISING);
-    
     // If RESET is high, then reset the CPU
-    if (reset) {
+    if (proc->ext.reset) {
         hyrisc_reset(proc);
 
         return;
     }
 
     // If FREEZE is high, then idle
-    if (freeze) {
+    if (proc->ext.freeze) {
         return;
     }
 
-    // If IRQ is rising, then jump to the vector on V0-V31
-    if (irq) {
+    // If IRQ is high, then jump to the vector on V0-V31
+    if (proc->ext.pic.irq) {
+        proc->internal.cycle = 0;
         proc->internal.r[pc] = proc->ext.pic.v;
 
-        hysignal_set(&proc->ext.pic.irqack, true);
+        proc->ext.pic.irqack = true;
 
         // Handling an IRQ takes 1 input clock
         return;
@@ -88,7 +99,8 @@ void hyrisc_init_read(hyrisc_t* proc, hyu32_t addr, hyint_t size = ACS_WORD) {
     proc->ext.bci.a = addr;
     proc->ext.bci.s = size;
 
-    hysignal_set(&proc->ext.bci.rw, false);
+    proc->ext.bci.rw = false;
+    proc->ext.bci.busreq = true;
 
     proc->ext.bci.be = 0x0;
 }
@@ -98,79 +110,54 @@ void hyrisc_init_write(hyrisc_t* proc, hyu32_t addr, hyu32_t value, hyint_t size
     proc->ext.bci.s = size;
     proc->ext.bci.d = value;
 
-    hysignal_set(&proc->ext.bci.rw, true);
+    proc->ext.bci.rw = true;
+    proc->ext.bci.busreq = true;
 
     proc->ext.bci.be = 0x0;
 }
 
 bool hyrisc_execute(hyrisc_t* proc, hyint_t cycle);
 
-void hyrisc_init_clock(hyrisc_t* proc, hysignal_t* clock) {
-    proc->ext.clk = clock;
-}
-
 void hyrisc_clock(hyrisc_t* proc) {
-    // Processor is clocked on every input clock edge
-    bool clock_input = SIG(proc->ext.clk, EDGE);
+    // Update BCI
+    hyrisc_bci_update(proc);
 
-    if (clock_input && (proc->ext.vcc >= 0.5f)) {
-        // Update BCI
-        hyrisc_bci_update(proc);
+    // Handle signals
+    hyrisc_handle_signals(proc);
 
-        // Handle signals
-        hyrisc_handle_signals(proc);
+    switch (proc->internal.cycle) {
+        case 0x0: {
+            hyrisc_init_read(proc, proc->internal.r[pc], 2);
 
-        switch (proc->internal.cycle) {
-            case 0x0: {
-                hyrisc_init_read(proc, proc->internal.r[pc], 4);
+            proc->internal.cycle++;
+        } break;
 
-                // Set address bus to PC
-                proc->ext.bci.a = proc->internal.r[pc];
+        case 0x1: {
+            // Copy the contents of the data bus to
+            // the instruction latch for decoding
+            proc->internal.instruction = proc->ext.bci.d;
 
-                // Set RW pin to read
-                hysignal_set(&proc->ext.bci.rw, false);
+            proc->internal.cycle++;
+        } break;
 
-                // Clear bus error
-                proc->ext.bci.be = 0x0;
+        case 0x2: {
+            bool done = hyrisc_execute(proc, proc->internal.cycle - 0x2);
 
-                proc->internal.cycle++;
-            } break;
-
-            case 0x1: {
-                bool busack = hysignal_get(&proc->ext.bci.busack, hysignal_t::HIGH);
-
-                // Idle until BUSACK becomes high
-                if (!busack) return;
-
-                // Copy the contents of the data bus to
-                // the instruction latch for decoding
-                proc->internal.instruction = proc->ext.bci.d;
-
-                proc->internal.cycle++;
-            } break;
-
-            case 0x2: {
-                bool done = hyrisc_execute(proc, proc->internal.cycle - 0x2);
-
-                if (done) {
-                    proc->internal.cycle = 0;
-                } else {
-                    // Instruction needs to wait for I/O
-                    proc->internal.cycle++;
-                }
-            } break;
-
-            case 0x3: {
-                // Instruction has to finish processing I/O on cycle 4
-                if (!hyrisc_execute(proc, proc->internal.cycle - 0x2)) return;
-
+            if (done) {
                 proc->internal.cycle = 0;
-            } break;
-        }
-    }
+            } else {
+                // Instruction needs to wait for I/O
+                proc->internal.cycle++;
+            }
+        } break;
 
-    // If no clock input or not enough voltage then idle
-    return;
+        case 0x3: {
+            // Instruction has to finish processing I/O on cycle 4
+            if (!hyrisc_execute(proc, proc->internal.cycle - 0x2)) return;
+
+            proc->internal.cycle = 0;
+        } break;
+    }
 }
 
 /*
@@ -210,44 +197,45 @@ void hyrisc_clock(hyrisc_t* proc) {
 // fp0-fp7  volatile
 // fp8-fp15 non-volatile
 
-    enum opcodes {
-        HY_LOAD  = 0xff,
-        HY_STORE = 0xfe,
-        HY_ADD   = 0xef,
-        HY_SUB   = 0xee,
-        HY_MUL   = 0xed,
-        HY_DIV   = 0xec,
-        HY_AND   = 0xdf,
-        HY_OR    = 0xde,
-        HY_XOR   = 0xdd,
-        HY_NOT   = 0xdc,
-        HY_NEG   = 0xdb,
-        HY_INC   = 0xcf,
-        HY_DEC   = 0xce,
-        HY_RST   = 0xcd,
-        HY_TST   = 0xcc,
-        HY_CMP   = 0xcb,
-        HY_SLL   = 0xbf,
-        HY_SLR   = 0xbe,
-        HY_SAL   = 0xbd,
-        HY_SAR   = 0xbc,
-        HY_RL    = 0xbb,
-        HY_RR    = 0xba,
-        HY_JC    = 0xaf,
-        HY_JP    = 0xae,
-        HY_BC    = 0xad,
-        HY_JR    = 0xac,
-        HY_JALC  = 0xab,
-        HY_JPL   = 0xaa,
-        HY_CALLC = 0x9f,
-        HY_CALL  = 0x9e,
-        HY_RETC  = 0x9d,
-        HY_RET   = 0x9c,
-        HY_RTL   = 0x9b,
-        HY_PUSH  = 0x8f,
-        HY_POP   = 0x8e,
-        HY_NOP   = 0x7f
-    };
+enum hyrisc_opcodes_t {
+    HY_LOAD  = 0xff,
+    HY_STORE = 0xfe,
+    HY_LEA   = 0xfd,
+    HY_ADD   = 0xef,
+    HY_SUB   = 0xee,
+    HY_MUL   = 0xed,
+    HY_DIV   = 0xec,
+    HY_AND   = 0xdf,
+    HY_OR    = 0xde,
+    HY_XOR   = 0xdd,
+    HY_NOT   = 0xdc,
+    HY_NEG   = 0xdb,
+    HY_INC   = 0xcf,
+    HY_DEC   = 0xce,
+    HY_RST   = 0xcd,
+    HY_TST   = 0xcc,
+    HY_CMP   = 0xcb,
+    HY_SLL   = 0xbf,
+    HY_SLR   = 0xbe,
+    HY_SAL   = 0xbd,
+    HY_SAR   = 0xbc,
+    HY_RL    = 0xbb,
+    HY_RR    = 0xba,
+    HY_JC    = 0xaf,
+    HY_JP    = 0xae,
+    HY_BC    = 0xad,
+    HY_JR    = 0xac,
+    HY_JALC  = 0xab,
+    HY_JPL   = 0xaa,
+    HY_CALLC = 0x9f,
+    HY_CALL  = 0x9e,
+    HY_RETC  = 0x9d,
+    HY_RET   = 0x9c,
+    HY_RTL   = 0x9b,
+    HY_PUSH  = 0x8f,
+    HY_POP   = 0x8e,
+    HY_NOP   = 0x7f
+};
 
     /*
 Load, Store
@@ -446,12 +434,9 @@ inline bool hyrisc_test_condition(hyrisc_t* proc, int cc) {
 #define IMM16  (BITS(16, 16))
 #define COND   (BITS(11, 4))
 
-#define hyrisc_bus_wait \
-bool busack = hysignal_get(&proc->ext.bci.busack, hysignal_t::HIGH); \
+#define hyrisc_bus_wait if (!proc->ext.bci.busack) return false; \
 \
-if (!busack) return false; \
-\
-hysignal_set(&proc->ext.bci.busack, hysignal_t::LOW);
+proc->ext.bci.busack = false;
 
 #define hyrisc_do_read(dest) \
 hyrisc_bus_wait \
@@ -493,9 +478,18 @@ bool hyrisc_execute(hyrisc_t* proc, hyint_t cycle) {
             }
         } break;
 
+        case HY_LEA: {
+            case 7: { // lea r0, r1+(r2:2)
+                REGX = REGY + (REGZ << BITS(26, 4)); return true;
+            } break;
+            case 6: { // lea r0, r1+(r2*2)
+                REGX = REGY + (REGZ * BITS(26, 4)); return true;
+            } break;
+        } break;
+
         case HY_STORE: {
             /*  sized register to *register: sw %r0, %r1;
-                iiiiiiii 111xxxxx yyyyySS0 00000000
+                iiiiiiii 111xxxxx yyyyy000 000000SS
                 00000000 00000000 11111111 11111111
                 01234567 89abcdef 01234567 89abcdef
 
@@ -574,8 +568,8 @@ bool hyrisc_execute(hyrisc_t* proc, hyint_t cycle) {
                 case 7: { alu::perform_operation(proc, REGX, REGY, REGZ, alu::HY_addu); } break;
                 case 6: { alu::perform_operation(proc, REGX, REGY, IMM82, alu::HY_addu); } break;
                 case 5: { alu::perform_operation(proc, REGX, REGX, IMM16, alu::HY_addu); } break;
-                case 4: { alu::perform_operation(proc, REGX, REGY, (hyi32_t)IMM82, alu::HY_adds); } break;
-                case 3: { alu::perform_operation(proc, REGX, REGX, (hyi32_t)IMM16, alu::HY_adds); } break;
+                case 4: { alu::perform_operation(proc, REGX, REGY, (hyi32_t)(hyi8_t)IMM82, alu::HY_adds); } break;
+                case 3: { alu::perform_operation(proc, REGX, REGX, (hyi32_t)(hyi16_t)IMM16, alu::HY_adds); } break;
             }
         } break;
         
@@ -603,8 +597,8 @@ bool hyrisc_execute(hyrisc_t* proc, hyint_t cycle) {
                 case 7: { alu::perform_operation(proc, REGX, REGY, REGZ , alu::HY_subu); } break;
                 case 6: { alu::perform_operation(proc, REGX, REGY, IMM82, alu::HY_subu); } break;
                 case 5: { alu::perform_operation(proc, REGX, REGX, IMM16, alu::HY_subu); } break;
-                case 4: { alu::perform_operation(proc, REGX, REGY, (hyi32_t)IMM82, alu::HY_subs); } break;
-                case 3: { alu::perform_operation(proc, REGX, REGX, (hyi32_t)IMM16, alu::HY_subs); } break;
+                case 4: { alu::perform_operation(proc, REGX, REGY, (hyi32_t)(hyi8_t)IMM82, alu::HY_subs); } break;
+                case 3: { alu::perform_operation(proc, REGX, REGX, (hyi32_t)(hyi16_t)IMM16, alu::HY_subs); } break;
             }
         } break;
 
@@ -634,8 +628,8 @@ bool hyrisc_execute(hyrisc_t* proc, hyint_t cycle) {
                 case 7: { alu::perform_operation(proc, REGX, REGY, REGZ , alu::HY_mulu); } break;
                 case 6: { alu::perform_operation(proc, REGX, REGY, IMM82, alu::HY_mulu); } break;
                 case 5: { alu::perform_operation(proc, REGX, REGX, IMM16, alu::HY_mulu); } break;
-                case 4: { alu::perform_operation(proc, REGX, REGY, (hyi32_t)IMM82, alu::HY_muls); } break;
-                case 3: { alu::perform_operation(proc, REGX, REGX, (hyi32_t)IMM16, alu::HY_muls); } break;
+                case 4: { alu::perform_operation(proc, REGX, REGY, (hyi32_t)(hyi8_t)IMM82, alu::HY_muls); } break;
+                case 3: { alu::perform_operation(proc, REGX, REGX, (hyi32_t)(hyi16_t)IMM16, alu::HY_muls); } break;
             }
         } break;
 
@@ -663,13 +657,13 @@ bool hyrisc_execute(hyrisc_t* proc, hyint_t cycle) {
                 case 7: { alu::perform_operation(proc, REGX, REGY, REGZ , alu::HY_divu); } break;
                 case 6: { alu::perform_operation(proc, REGX, REGY, IMM82, alu::HY_divu); } break;
                 case 5: { alu::perform_operation(proc, REGX, REGX, IMM16, alu::HY_divu); } break;
-                case 4: { alu::perform_operation(proc, REGX, REGY, (hyi32_t)IMM82, alu::HY_divs); } break;
-                case 3: { alu::perform_operation(proc, REGX, REGX, (hyi32_t)IMM16, alu::HY_divs); } break;
+                case 4: { alu::perform_operation(proc, REGX, REGY, (hyi32_t)(hyi8_t)IMM82, alu::HY_divs); } break;
+                case 3: { alu::perform_operation(proc, REGX, REGX, (hyi32_t)(hyi16_t)IMM16, alu::HY_divs); } break;
             }
         } break;
 
         case HY_AND: { 
-            /*  Add register y with register z, store in register x: add(u) %r0, %r0, %r1
+            /*  And register y with register z, store in register x: add(u) %r0, %r0, %r1
                 iiiiiiii 111xxxxx yyyyyzzz zz000000
                 01234567 89abcdef 01234567 89abcdef
 
@@ -868,15 +862,15 @@ bool hyrisc_execute(hyrisc_t* proc, hyint_t cycle) {
             switch (BITS(8, 3)) {
                 case 7: { if (hyrisc_test_condition(proc, COND)) { proc->internal.r[pc] += (int8_t)IMM81; } } break;
                 case 6: { if (hyrisc_test_condition(proc, COND)) { proc->internal.r[pc] += (int16_t)IMM16; } } break;
-                case 5: { if (hyrisc_test_condition(proc, COND)) { proc->internal.r[pc] += REGY << BITS(21, 5); } } break;
+                case 5: { if (hyrisc_test_condition(proc, COND)) { proc->internal.r[pc] += (REGY << BITS(21, 5)) + BITS(26, 6); } } break;
             }
         } break;
 
         case HY_JALC: {
             /*  
                 iiiiiiii 111cccc0 iiiiiiii iiiiiiii jalne 0xabcd
-                iiiiiiii 110cccc0 xxxxxsss ssoooooo jalne (%r0<<4)+1
-                iiiiiiii 101cccc0 xxxxxyyy yysssss0 jalne %r0, %r1<<2
+                iiiiiiii 110cccc0 xxxxxsss ssoooooo jalne (%r0:4)+1
+                iiiiiiii 101cccc0 xxxxxyyy yysssss0 jalne %r0+%r1:2
             */
             switch (BITS(8, 3)) {
                 case 7: { if (hyrisc_test_condition(proc, COND)) { proc->internal.r[lr0] = proc->internal.r[pc] + 4; proc->internal.r[pc] &= 0xffff0000; proc->internal.r[pc] |= IMM16; } } break;
@@ -930,6 +924,8 @@ bool hyrisc_execute(hyrisc_t* proc, hyint_t cycle) {
 
     proc->internal.r[r0] = 0;
     proc->internal.r[pc] += 4;
+
+    return true;
 }
 
 #undef BITS
