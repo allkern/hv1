@@ -111,6 +111,7 @@ struct hyrisc_int_t {
     hybool_t    rw;             // Access type flag
     hyu32_t     shadow_address; // Temporary address latch
     hyu32_t     shadow_data;    // Temporary data latch
+    hyint_t     link_level;     // Link register level
 };
 
 struct hyrisc_t {

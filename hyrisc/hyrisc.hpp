@@ -137,25 +137,31 @@ void hyrisc_clock(hyrisc_t* proc) {
             // the instruction latch for decoding
             proc->internal.instruction = proc->ext.bci.d;
 
+            proc->internal.r[pc] += 4;
             proc->internal.cycle++;
         } break;
 
         case 0x2: {
+            // Decode and execute are done on the same clock cycle
             bool done = hyrisc_execute(proc, proc->internal.cycle - 0x2);
 
+            // If its done, then reset cycle counter
+            // and increment PC
             if (done) {
                 proc->internal.cycle = 0;
+                proc->internal.r[r0] = 0;
             } else {
-                // Instruction needs to wait for I/O
+                // Instruction needs an extra cycle to wait for I/O
                 proc->internal.cycle++;
             }
         } break;
 
         case 0x3: {
             // Instruction has to finish processing I/O on cycle 4
-            if (!hyrisc_execute(proc, proc->internal.cycle - 0x2)) return;
-
+            hyrisc_execute(proc, proc->internal.cycle - 0x2);
+    
             proc->internal.cycle = 0;
+            proc->internal.r[r0] = 0;
         } break;
     }
 }
@@ -438,10 +444,7 @@ inline bool hyrisc_test_condition(hyrisc_t* proc, int cc) {
 \
 proc->ext.bci.busack = false;
 
-#define hyrisc_do_read(dest) \
-hyrisc_bus_wait \
-\
-dest = proc->ext.bci.d;
+#define hyrisc_do_read(dest) dest = proc->ext.bci.d;
 
 // Binary:
 // ff 05 0f 00 de 05 ff ff ef 06 20 00
@@ -465,13 +468,13 @@ bool hyrisc_execute(hyrisc_t* proc, hyint_t cycle) {
                 case 5: { REGX = IMM16 << 16; return true; } break; // lui %r0, #ffff;
                 case 4: { // l %r0, %r1+(%r2:2)
                     switch (cycle) {
-                        case 0: hyrisc_init_read(proc, REGY + (REGZ << BITS(26, 4)), size); return false;
+                        case 0: hyrisc_init_read(proc, REGY + (REGZ << BITS(26, 4)), 2); return false;
                         case 1: hyrisc_do_read(REGX); return true;
                     }
                 } break;
                 case 3: { // l %r0, %r1+(%r2*2)
                     switch (cycle) {
-                        case 0: hyrisc_init_read(proc, REGY + (REGZ * BITS(26, 4)), size); return false;
+                        case 0: hyrisc_init_read(proc, REGY + (REGZ * BITS(26, 4)), 2); return false;
                         case 1: hyrisc_do_read(REGX); return true;
                     }
                 } break;
@@ -675,11 +678,13 @@ bool hyrisc_execute(hyrisc_t* proc, hyint_t cycle) {
                 iiiiiiii 101xxxxx iiiiiiii iiiiiiii
             */
 
+
             switch (BITS(8, 3)) {
                 case 7: { alu::perform_operation(proc, REGX, REGY, REGZ , alu::HY_and); } break;
                 case 6: { alu::perform_operation(proc, REGX, REGY, IMM82, alu::HY_and); } break;
                 case 5: { alu::perform_operation(proc, REGX, REGX, IMM16, alu::HY_and); } break;
             }
+           
         } break;
 
         case HY_OR: { 
@@ -860,8 +865,8 @@ bool hyrisc_execute(hyrisc_t* proc, hyint_t cycle) {
                 iiiiiiii 101cccc0 xxxxxsss ss000000
             */
             switch (BITS(8, 3)) {
-                case 7: { if (hyrisc_test_condition(proc, COND)) { proc->internal.r[pc] += (int8_t)IMM81; } } break;
-                case 6: { if (hyrisc_test_condition(proc, COND)) { proc->internal.r[pc] += (int16_t)IMM16; } } break;
+                case 7: { if (hyrisc_test_condition(proc, COND)) { proc->internal.r[pc] += (int32_t)(int8_t)IMM81; } } break;
+                case 6: { if (hyrisc_test_condition(proc, COND)) { proc->internal.r[pc] += (int32_t)(int16_t)IMM16; } } break;
                 case 5: { if (hyrisc_test_condition(proc, COND)) { proc->internal.r[pc] += (REGY << BITS(21, 5)) + BITS(26, 6); } } break;
             }
         } break;
@@ -873,9 +878,9 @@ bool hyrisc_execute(hyrisc_t* proc, hyint_t cycle) {
                 iiiiiiii 101cccc0 xxxxxyyy yysssss0 jalne %r0+%r1:2
             */
             switch (BITS(8, 3)) {
-                case 7: { if (hyrisc_test_condition(proc, COND)) { proc->internal.r[lr0] = proc->internal.r[pc] + 4; proc->internal.r[pc] &= 0xffff0000; proc->internal.r[pc] |= IMM16; } } break;
-                case 6: { if (hyrisc_test_condition(proc, COND)) { proc->internal.r[lr0] = proc->internal.r[pc] + 4; proc->internal.r[pc] = (REGY << BITS(21, 5)) + BITS(26, 6); } } break;
-                case 5: { if (hyrisc_test_condition(proc, COND)) { proc->internal.r[lr0] = proc->internal.r[pc] + 4; proc->internal.r[pc] = (REGY + (REGZ << BITS(26, 5))); } } break;
+                case 7: { if (hyrisc_test_condition(proc, COND)) { proc->internal.r[lr0 + (proc->internal.link_level++)] = proc->internal.r[pc]; proc->internal.r[pc] &= 0xffff0000; proc->internal.r[pc] |= IMM16; } } break;
+                case 6: { if (hyrisc_test_condition(proc, COND)) { proc->internal.r[lr0 + (proc->internal.link_level++)] = proc->internal.r[pc]; proc->internal.r[pc] = (REGY << BITS(21, 5)) + BITS(26, 6); } } break;
+                case 5: { if (hyrisc_test_condition(proc, COND)) { proc->internal.r[lr0 + (proc->internal.link_level++)] = proc->internal.r[pc]; proc->internal.r[pc] = (REGY + (REGZ << BITS(26, 5))); } } break;
             }
         } break;
 
@@ -884,10 +889,23 @@ bool hyrisc_execute(hyrisc_t* proc, hyint_t cycle) {
                 iiiiiiii 111cccc0 00000000 00000000 rtlne
             */
             switch (BITS(8, 3)) {
-                case 7: { if (hyrisc_test_condition(proc, COND)) { proc->internal.r[pc] = proc->internal.r[lr0]; } } break;
+                case 7: { if (hyrisc_test_condition(proc, COND)) { proc->internal.r[pc] = proc->internal.r[lr0 + (--proc->internal.link_level)]; } } break;
             }
         } break;
 
+        case HY_SAL: {
+            switch (BITS(8, 3)) {
+                case 7: { alu::perform_operation(proc, REGX, REGY, 0, alu::HY_sal); } break;
+                case 6: { alu::perform_operation(proc, REGX, IMM16, 0, alu::HY_sal); } break;
+            }
+        } break;
+        
+        case HY_SAR: {
+            switch (BITS(8, 3)) {
+                case 7: { alu::perform_operation(proc, REGX, REGX, REGY , alu::HY_sar); } break;
+                case 6: { alu::perform_operation(proc, REGX, REGX, IMM16, alu::HY_sar); } break;
+            }
+        } break;
     // To-do
     // tst  : cc
     // cmp  : cb
@@ -921,9 +939,6 @@ bool hyrisc_execute(hyrisc_t* proc, hyint_t cycle) {
     // Misc:
     // nop  : 7f
     }
-
-    proc->internal.r[r0] = 0;
-    proc->internal.r[pc] += 4;
 
     return true;
 }

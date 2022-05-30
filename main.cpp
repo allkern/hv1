@@ -5,16 +5,9 @@
 #include "log.hpp"
 
 #include "dev/flash.hpp"
-
-// hyu32_t program[] = {
-//     0x000f05ff,
-//     0xffff05de,
-//     0x002006ef,
-//     0x0000007f,
-//     0x0000007f,
-//     0x0000007f,
-//     0x0000007f
-// };
+#include "dev/terminal.hpp"
+#include "dev/memory.hpp"
+#include "dev/bios.hpp"
 
 int main() {
     _log::init("hyrisc");
@@ -23,24 +16,44 @@ int main() {
     hyrisc_t* cpu = new hyrisc_t;
 
     dev_flash_t flash;
+    dev_terminal_t terminal;
+    dev_memory_t memory;
+    dev_bios_t bios;
 
-    flash.create(0x10000, 0x80000000);
+    bios.create(0x1000, 0x80000000);
+    bios.init(&cpu->ext);
+    bios.load("bios.bin");
+
+    flash.create(0x10000, 0x90000000);
     flash.init(&cpu->ext);
-    flash.write(0x00000000, 0xfffffdef, 2);
-    flash.load("hyrisc-a/test.bin");
+    flash.load("program.bin");
+
+    terminal.create(0xa0000000);
+    terminal.init(&cpu->ext);
+
+    memory.create(0x10000, 0x10000000);
+    memory.init(&cpu->ext);
 
     hyrisc_reset(cpu);
 
     cpu->ext.vcc = 1.0f;
     cpu->internal.r[pc] = 0x80000000;
-    //hysignal_set(&cpu->ext.bci.busirq, true);
 
-    for (int i = 0; i < 8; i++) {
+    while (true) {
         hyrisc_clock(cpu);
-        _log(debug, "before flash bci.a=%08x, bci.d=%08x, bci.busreq=%u, bci.busack=%u", cpu->ext.bci.a, cpu->ext.bci.d, cpu->ext.bci.busreq, cpu->ext.bci.busack);
+        bios.update();
         flash.update();
-        _log(debug, "after  flash bci.a=%08x, bci.d=%08x, bci.busreq=%u, bci.busack=%u", cpu->ext.bci.a, cpu->ext.bci.d, cpu->ext.bci.busreq, cpu->ext.bci.busack);
-
-        _log(debug, "pc: %08x", cpu->internal.r[pc]);
+        terminal.update();
+        memory.update();
+        // _log(debug, "il=%08x r0=%08x gp0=%08x gp1=%08x a0=%08x pc=%08x, busreq=%u, busack=%u",
+        //     cpu->internal.instruction,
+        //     cpu->internal.r[r0],
+        //     cpu->internal.r[gp0],
+        //     cpu->internal.r[gp1],
+        //     cpu->internal.r[a0],
+        //     cpu->internal.r[pc],
+        //     cpu->ext.bci.busreq,
+        //     cpu->ext.bci.busack
+        // );
     }
 }

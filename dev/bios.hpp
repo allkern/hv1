@@ -7,7 +7,7 @@
 #include <fstream>
 #include <vector>
 
-class dev_flash_t : public device_t {
+class dev_bios_t : public device_t {
     hyrisc_ext_t* proc;
 
     std::vector <hyu8_t> buf;

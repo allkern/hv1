@@ -7,15 +7,15 @@
 #include <fstream>
 #include <vector>
 
-class dev_flash_t : public device_t {
+class dev_memory_t : public device_t {
     hyrisc_ext_t* proc;
 
-    std::vector <hyu8_t> buf;
+    std::vector <hyu8_t> phys;
 
     hyu32_t base;
 
     hyu8_t read8(hyu32_t addr) {
-        return buf[addr];
+        return phys[addr];
     }
 
     hyu16_t read16(hyu32_t addr) {
@@ -27,7 +27,7 @@ class dev_flash_t : public device_t {
     }
 
     void write8(hyu32_t addr, hyu32_t value) {
-        buf[addr] = value & 0xff;
+        phys[addr] = value & 0xff;
     }
 
     void write16(hyu32_t addr, hyu32_t value) {
@@ -42,7 +42,7 @@ class dev_flash_t : public device_t {
 
 public:
     void create(size_t size, hyu32_t base) {
-        buf.resize(size);
+        phys.resize(size);
 
         this->base = base;
     }
@@ -69,14 +69,8 @@ public:
         this->proc = proc;
     }
 
-    void load(std::string fn) {
-        std::ifstream file(fn, std::ios::binary);
-
-        file.read((char*)buf.data(), buf.size());
-    }
-
     void update() override {
-        bool address_in_range = (proc->bci.a >= base) && (proc->bci.a <= (base + buf.size()));
+        bool address_in_range = (proc->bci.a >= base) && (proc->bci.a <= (base + phys.size()));
 
         if (!address_in_range) return;
         if (!proc->bci.busreq) return;
