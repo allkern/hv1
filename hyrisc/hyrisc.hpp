@@ -10,8 +10,6 @@
 
 #include <iostream>
 
-#define SIG(sig, trigger) hysignal_get(sig, hysignal_t::trigger)
-
 enum hyrisc_register_names_t {
     r0  , gp0 , gp1 , gp2 ,
     gp3 , gp4 , gp5 , gp6 ,
@@ -58,10 +56,18 @@ void hyrisc_bci_update(hyrisc_t* proc) {
 
 void hyrisc_reset(hyrisc_t* proc) {
     std::memset(&proc->internal, 0, sizeof(proc->internal));
-    std::memset(&proc->ext, 0, sizeof(proc->ext));
 
+    proc->ext.bci.a      = 0xffffffff;
+    proc->ext.bci.d      = 0xffffffff;
+    proc->ext.bci.rw     = false;
+    proc->ext.bci.s      = 0x2;
+    proc->ext.pic.irq    = false;
+    proc->ext.pic.irqack = false;
     proc->ext.bci.busirq = true;
+
     proc->internal.instruction = 0xffffffff;
+
+    proc->internal.r[pc] = proc->ext.pic.v;
 }
 
 void hyrisc_handle_signals(hyrisc_t* proc) {
@@ -942,3 +948,12 @@ bool hyrisc_execute(hyrisc_t* proc, hyint_t cycle) {
 }
 
 #undef BITS
+
+void hyrisc_pulse_reset(hyrisc_t* proc, hyu32_t vec) {
+    proc->ext.reset = true;
+    proc->ext.pic.v = vec;
+
+    hyrisc_clock(proc);
+
+    proc->ext.reset = false;
+}

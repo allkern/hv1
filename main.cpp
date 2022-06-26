@@ -33,17 +33,18 @@ int main() {
     memory.create(0x10000, 0x10000000);
     memory.init(&cpu->ext);
 
-    hyrisc_reset(cpu);
+    hyrisc_pulse_reset(cpu, 0x80000000);
 
     cpu->ext.vcc = 1.0f;
-    cpu->internal.r[pc] = 0x80000000;
 
     while (true) {
         hyrisc_clock(cpu);
+
         bios.update();
         flash.update();
         terminal.update();
         memory.update();
+
         // _log(debug, "il=%08x r0=%08x gp0=%08x gp1=%08x a0=%08x pc=%08x, busreq=%u, busack=%u",
         //     cpu->internal.instruction,
         //     cpu->internal.r[r0],
