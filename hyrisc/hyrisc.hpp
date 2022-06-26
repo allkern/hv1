@@ -346,8 +346,6 @@ operation_t HY_##name = [](hyu32_t& dst, hyu32_t src1, hyu32_t src2) -> hyu64_t 
     OPERATION(rr , src1 >> src2     ; dst = temp & 0xffffffff);
 
     void perform_operation(hyrisc_t* proc, hyu32_t& dst, hyu32_t src1, hyu32_t src2, operation_t op) {
-        hyu32_t old = dst;
-
         hyu64_t temp = op(dst, src1, src2);
 
         hyrisc_set_flags(proc, Z, !(temp & 0xffffffff));
@@ -468,13 +466,13 @@ bool hyrisc_execute(hyrisc_t* proc, hyint_t cycle) {
                 case 5: { REGX = IMM16 << 16; return true; } break; // lui %r0, #ffff;
                 case 4: { // l %r0, %r1+(%r2:2)
                     switch (cycle) {
-                        case 0: hyrisc_init_read(proc, REGY + (REGZ << BITS(26, 4)), 2); return false;
+                        case 0: hyrisc_init_read(proc, REGY + (REGZ << BITS(26, 4)), size); return false;
                         case 1: hyrisc_do_read(REGX); return true;
                     }
                 } break;
                 case 3: { // l %r0, %r1+(%r2*2)
                     switch (cycle) {
-                        case 0: hyrisc_init_read(proc, REGY + (REGZ * BITS(26, 4)), 2); return false;
+                        case 0: hyrisc_init_read(proc, REGY + (REGZ * BITS(26, 4)), size); return false;
                         case 1: hyrisc_do_read(REGX); return true;
                     }
                 } break;

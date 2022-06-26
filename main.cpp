@@ -12,7 +12,6 @@
 int main() {
     _log::init("hyrisc");
 
-    hysignal_t* clock = new hysignal_t;
     hyrisc_t* cpu = new hyrisc_t;
 
     dev_flash_t flash;

@@ -65,6 +65,8 @@ public:
             case 0x0: return 0x0;
             case 0x1: return getchar();
         }
+
+        return 0x0;
     }
     
     void write(hyu32_t addr, hyu32_t value, hyint_t size) override {

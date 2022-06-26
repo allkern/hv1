@@ -12,56 +12,10 @@ typedef float    hyfloat_t;
 typedef bool     hybool_t;
 typedef int      hyint_t;
 
-struct hysignal_t {
-    hybool_t prev;
-    hybool_t current;
-
-    enum trigger_t {
-        LEVEL_LOW,
-        RISING,
-        FALLING,
-        LEVEL_HIGH,
-        EDGE,
-        LEVEL_ANY,
-        HIGH,
-        LOW
-    } trigger;
+enum rw_mode_t : bool {
+    RW_READ = false,
+    RW_WRITE = true
 };
-
-void hysignal_set(hysignal_t* sig, bool value) {
-    sig->prev = sig->current;
-    sig->current = value;
-}
-
-bool hysignal_get(hysignal_t* sig) {
-    switch (sig->trigger) {
-        case hysignal_t::LEVEL_LOW : return  !sig->prev && !sig->current;
-        case hysignal_t::RISING    : return  !sig->prev &&  sig->current;
-        case hysignal_t::FALLING   : return   sig->prev && !sig->current;
-        case hysignal_t::LEVEL_HIGH: return   sig->prev &&  sig->current;
-        case hysignal_t::EDGE      : return (!sig->prev &&  sig->current) || ( sig->prev && !sig->current);
-        case hysignal_t::LEVEL_ANY : return (!sig->prev && !sig->current) || ( sig->prev &&  sig->current);
-        case hysignal_t::HIGH      : return   sig->current;
-        case hysignal_t::LOW       : return  !sig->current;
-    }
-
-    return false;
-}
-
-bool hysignal_get(hysignal_t* sig, hysignal_t::trigger_t trigger) {
-    switch (trigger) {
-        case hysignal_t::LEVEL_LOW : return  !sig->prev && !sig->current;
-        case hysignal_t::RISING    : return  !sig->prev &&  sig->current;
-        case hysignal_t::FALLING   : return   sig->prev && !sig->current;
-        case hysignal_t::LEVEL_HIGH: return   sig->prev &&  sig->current;
-        case hysignal_t::EDGE      : return (!sig->prev &&  sig->current) || ( sig->prev && !sig->current);
-        case hysignal_t::LEVEL_ANY : return (!sig->prev && !sig->current) || ( sig->prev &&  sig->current);
-        case hysignal_t::HIGH      : return   sig->current;
-        case hysignal_t::LOW       : return  !sig->current;
-    }
-
-    return false;
-}
 
 // Bus Controller Interface
 struct hyrisc_bci_t {
@@ -94,12 +48,6 @@ struct hyrisc_ext_t {
 
 // Internal data and latches
 struct hyrisc_int_t {
-    // Internal state machine
-    enum state_t : int {
-        ST_FETCHING,
-        ST_EXECUTING
-    } state;
-
     hyint_t     cycle;          // Cycle counter
     hyu32_t     instruction;    // Instruction latch
     hyu32_t     r[32];          // GPRs
@@ -107,10 +55,7 @@ struct hyrisc_int_t {
     hyfloat_t   f[16];          // FPRs
     hyu8_t      opcode;         // Opcode latch
     hyu8_t      st;             // State register
-    hybool_t    memory_access;  // Memory access flag
     hybool_t    rw;             // Access type flag
-    hyu32_t     shadow_address; // Temporary address latch
-    hyu32_t     shadow_data;    // Temporary data latch
     hyint_t     link_level;     // Link register level
 };
 
