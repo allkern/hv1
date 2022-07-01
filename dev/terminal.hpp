@@ -42,10 +42,6 @@ int getchar() {
 
     tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
 
-    if (c == 27) {
-        bfc::sigint_handler(0);
-    }
-
     return c;
 }
 #endif

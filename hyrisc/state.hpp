@@ -1,16 +1,6 @@
 #pragma once
 
-typedef uint8_t  hyu8_t;
-typedef uint16_t hyu16_t;
-typedef uint32_t hyu32_t;
-typedef uint64_t hyu64_t;
-typedef  int8_t  hyi8_t;
-typedef  int16_t hyi16_t;
-typedef  int32_t hyi32_t;
-typedef  int64_t hyi64_t;
-typedef float    hyfloat_t;
-typedef bool     hybool_t;
-typedef int      hyint_t;
+#include "types.hpp"
 
 enum rw_mode_t : bool {
     RW_READ = false,
@@ -52,7 +42,7 @@ struct hyrisc_int_t {
     hyu32_t     instruction;    // Instruction latch
     hyu32_t     r[32];          // GPRs
     hyint_t     last_cycles;    // Last cycles latch
-    hyfloat_t   f[16];          // FPRs
+    hyfloat_t   f[32];          // FPRs and FPCSR
     hyu8_t      opcode;         // Opcode latch
     hyu8_t      st;             // State register
     hybool_t    rw;             // Access type flag
@@ -60,6 +50,10 @@ struct hyrisc_int_t {
 };
 
 struct hyrisc_t {
+    // For debugging purposes
+    const char* id;
+    hyint_t core;
+
     hyrisc_int_t internal;
     hyrisc_ext_t ext;
 };

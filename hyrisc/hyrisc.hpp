@@ -5,8 +5,13 @@
 #include <cstdint>
 #include <array>
 #include <cstring>
+#include <cfenv>
 
 #include "state.hpp"
+#include "types.hpp"
+#include "flags.hpp"
+#include "alu.hpp"
+#include "fpu.hpp"
 
 #include <iostream>
 
@@ -19,6 +24,17 @@ enum hyrisc_register_names_t {
     a3  , a4  , a5  , rr1 ,
     lr0 , lr1 , lr2 , lr3 ,
     ir  , br  , sp  , pc
+};
+
+const char* hyrisc_register_names[] = {
+    "r0"  , "gp0" , "gp1" , "gp2" ,
+    "gp3" , "gp4" , "gp5" , "gp6" ,
+    "gp7" , "gp8" , "gp9" , "gp10",
+    "gp11", "gp12", "gp13", "gp14",
+    "a0"  , "a1"  , "a2"  , "rr0" ,
+    "a3"  , "a4"  , "a5"  , "rr1" ,
+    "lr0" , "lr1" , "lr2" , "lr3" ,
+    "ir"  , "br"  , "sp"  , "pc"
 };
 
 void hyrisc_bci_update(hyrisc_t* proc) {
@@ -52,6 +68,11 @@ void hyrisc_bci_update(hyrisc_t* proc) {
         // 256 bytes to handle each bus error mapped on f0000000-f000ffff
         proc->ext.pic.v = 0xf0000000 | (proc->ext.bci.be << 8);
     }
+}
+
+void hyrisc_set_cpuid(hyrisc_t* proc, const char* id, hyint_t core) {
+    proc->id = id;
+    proc->core = core;
 }
 
 void hyrisc_reset(hyrisc_t* proc) {
@@ -304,68 +325,9 @@ Misc:
 nop  : 7f
     */
 
-#define Z 0b00000001
-#define N 0b00000010
-#define V 0b00000100
-#define C 0b00001000
+
 
 #define BITS(b, l) ((((hyu32_t)proc->internal.instruction >> b) & ((1 << l) - 1)))
-
-inline static void hyrisc_set_flags(hyrisc_t* proc, hyu8_t mask, bool cond, bool reset = true) {
-    if (cond) {
-        proc->internal.st |= mask;
-        return;
-    }
-
-    if (reset) proc->internal.st &= ~mask;
-}
-
-namespace alu {
-    typedef hyu64_t (*operation_t)(hyu32_t&, hyu32_t, hyu32_t);
-
-#define OPERATION(name, code) \
-operation_t HY_##name = [](hyu32_t& dst, hyu32_t src1, hyu32_t src2) -> hyu64_t { hyu64_t temp = code; return temp; }
-
-    OPERATION(addu, src1 + src2     ; dst = temp & 0xffffffff);
-    OPERATION(subu, src1 - src2     ; dst = temp & 0xffffffff);
-    OPERATION(mulu, src1 * src2     ; dst = temp & 0xffffffff);
-    OPERATION(divu, src1 / src2     ; dst = temp & 0xffffffff);
-    OPERATION(adds, src1 + (hyi32_t)src2; dst = temp & 0xffffffff);
-    OPERATION(subs, src1 - (hyi32_t)src2; dst = temp & 0xffffffff);
-    OPERATION(muls, src1 * (hyi32_t)src2; dst = temp & 0xffffffff);
-    OPERATION(divs, src1 / (hyi32_t)src2; dst = temp & 0xffffffff);
-    OPERATION(and, src1 & src2      ; dst = temp & 0xffffffff);
-    OPERATION(or , src1 | src2      ; dst = temp & 0xffffffff);
-    OPERATION(xor, src1 ^ src2      ; dst = temp & 0xffffffff);
-    OPERATION(not, ~dst             ; dst = temp & 0xffffffff);
-    OPERATION(neg, ~dst             ; dst = temp & 0xffffffff);
-    OPERATION(i  , dst + 1          ; dst = temp & 0xffffffff);
-    OPERATION(d  , dst - 1          ; dst = temp & 0xffffffff);
-    OPERATION(rst, 0                ; dst = temp & 0xffffffff);
-    OPERATION(tst, dst & (1 << src1);                        );
-    OPERATION(cmp, dst - src1       ;                        );
-    OPERATION(sll, src1 << src2     ; dst = temp & 0xffffffff);
-    OPERATION(slr, src1 >> src2     ; dst = temp & 0xffffffff);
-    OPERATION(sal, src1 << src2     ; dst = temp & 0xffffffff);
-    OPERATION(sar, src1 >> src2     ; dst = temp & 0xffffffff);
-    OPERATION(rl , src1 << src2     ; dst = temp & 0xffffffff);
-    OPERATION(rr , src1 >> src2     ; dst = temp & 0xffffffff);
-
-    void perform_operation(hyrisc_t* proc, hyu32_t& dst, hyu32_t src1, hyu32_t src2, operation_t op) {
-        hyu64_t temp = op(dst, src1, src2);
-
-        hyrisc_set_flags(proc, Z, !(temp & 0xffffffff));
-        hyrisc_set_flags(proc, N, (temp & 0xffffffff) & 0x80000000);
-        hyrisc_set_flags(proc, C, temp > 0xffffffff);
-
-        // jne -> Z clear
-        // jeq -> Z set
-        // jgt -> N clear
-        // jlt -> N set
-        // jzs -> Z set 
-        // jzc -> Z clear
-    }
-}
 
 #define CC_EQ 0
 #define CC_NE 1
@@ -408,10 +370,7 @@ inline bool hyrisc_test_condition(hyrisc_t* proc, int cc) {
     return false;
 }
 
-#undef Z
-#undef N
-#undef V
-#undef C
+
 #undef CC_EQ
 #undef CC_NE
 #undef CC_CS
@@ -430,19 +389,15 @@ inline bool hyrisc_test_condition(hyrisc_t* proc, int cc) {
 #undef SET
 #undef CLEAR
 
-// lui   %r0,   #f;          ; load upper word with 000f (opcode 000f05ff)
-// or    %r0,   #ffff;       ; OR in the lower component (opcode ffff05de)
-// addu  %r0,   %r0,    #1;  ; Add 1                     (opcode 002006ef)
-
 #define REGX (proc->internal.r[BITS(11, 5)])
 #define REGY (proc->internal.r[BITS(16, 5)])
 #define REGZ (proc->internal.r[BITS(21, 5)])
 #define REGW (proc->internal.r[BITS(26, 5)])
-#define IMM51  (BITS(16, 5))
-#define IMM81  (BITS(16, 8))
-#define IMM82  (BITS(21, 8))
-#define IMM16  (BITS(16, 16))
-#define COND   (BITS(11, 4))
+#define IMM51 (BITS(16, 5))
+#define IMM81 (BITS(16, 8))
+#define IMM82 (BITS(21, 8))
+#define IMM16 (BITS(16, 16))
+#define COND  (BITS(11, 4))
 
 #define hyrisc_bus_wait if (!proc->ext.bci.busack) return false; \
 \
@@ -450,8 +405,6 @@ proc->ext.bci.busack = false;
 
 #define hyrisc_do_read(dest) dest = proc->ext.bci.d;
 
-// Binary:
-// ff 05 0f 00 de 05 ff ff ef 06 20 00
 bool hyrisc_execute(hyrisc_t* proc, hyint_t cycle) {
     switch (proc->internal.instruction & 0xff) {
         case HY_LOAD: {
@@ -909,6 +862,113 @@ bool hyrisc_execute(hyrisc_t* proc, hyint_t cycle) {
                 case 7: { alu::perform_operation(proc, REGX, REGX, REGY , alu::HY_sar); } break;
                 case 6: { alu::perform_operation(proc, REGX, REGX, IMM16, alu::HY_sar); } break;
             }
+        } break;
+
+        case HY_PUSH: {
+            /*  
+                iiiiiiii 111cccc0 xxxxxiii iiiiiiii push a0
+            */
+            proc->internal.r[sp] -= 4;
+
+            switch (BITS(8, 3)) {
+                case 7: {
+                    switch (cycle) {
+                        case 0: hyrisc_init_write(proc, proc->internal.r[sp], REGX, 2); return false;
+                        case 1: { hyrisc_bus_wait; } return true;
+                    }
+                } break;
+            }
+        } break;
+
+        case HY_POP: {
+            /*  
+                iiiiiiii 111cccc0 xxxxxiii iiiiiiii pop a0
+            */
+            switch (BITS(8, 3)) {
+                case 7: {
+                    switch (cycle) {
+                        case 0: hyrisc_init_read(proc, proc->internal.r[sp], 2); return false;
+                        case 1: hyrisc_do_read(REGX); return true;
+                    }
+                } break;
+            }
+
+            proc->internal.r[sp] += 4;
+        } break;
+        
+        case HY_CALLC: {
+            /*  
+                iiiiiiii 111cccc0 iiiiiiii iiiiiiii callne 0xabcd
+                iiiiiiii 110cccc0 xxxxxsss ssoooooo callne (%r0:4)+1
+                iiiiiiii 101cccc0 xxxxxyyy yysssss0 callne %r0+%r1:2
+            */
+            switch (BITS(8, 3)) {
+                case 7: {
+                    switch (cycle) {
+                        case 0: {
+                            if (hyrisc_test_condition(proc, COND)) {
+                                proc->internal.r[sp] -= 4;
+                                hyrisc_init_write(proc, proc->internal.r[sp], proc->internal.r[pc], 2); return false;
+
+                                proc->internal.r[pc] &= 0xffff0000;
+                                proc->internal.r[pc] |= IMM16;
+                            } else {
+                                return true;
+                            }
+                        } break;
+
+                        case 1: { hyrisc_bus_wait; } break;
+                    }
+                } break;
+
+                case 6: {
+                    switch (cycle) {
+                        case 0: {
+                            if (hyrisc_test_condition(proc, COND)) {
+                                proc->internal.r[sp] -= 4;
+                                hyrisc_init_write(proc, proc->internal.r[sp], proc->internal.r[pc], 2); return false;
+
+                                proc->internal.r[pc] = REGY;
+                            } else {
+                                return true;
+                            }
+                        } break;
+
+                        case 1: { hyrisc_bus_wait; } break;
+                    }
+                } break;
+            }
+        } break;
+
+        case HY_RETC: {
+            /*  
+                iiiiiiii 111cccc0 iiiiiiii iiiiiiii retc
+            */
+            switch (BITS(8, 3)) {
+                case 7: {
+                    switch (cycle) {
+                        case 0: {
+                            if (hyrisc_test_condition(proc, COND)) {
+                                hyrisc_init_read(proc, proc->internal.r[sp], 2);
+
+                                proc->internal.r[sp] += 4;
+
+                                return false;
+                            } else {
+                                return true;
+                            }
+                        } break;
+
+                        case 1: {
+                            hyrisc_do_read(proc->internal.r[pc]);
+                        } break;
+                    }
+                } break;
+            }
+        } break;
+
+        case HY_NOP: {
+            return true;
         } break;
     // To-do
     // tst  : cc
