@@ -83,9 +83,9 @@ namespace fpu {
     OPERATION(fsin  , std::sinf(src1)       ; dst  = temp);
     OPERATION(fcos  , std::cosf(src1)       ; dst  = temp);
     OPERATION(ftan  , std::tanf(src1)       ; dst  = temp);
-    OPERATION(fsinh , std::asinf(src1)      ; dst  = temp);
-    OPERATION(fcosh , std::acosf(src1)      ; dst  = temp);
-    OPERATION(ftanh , std::atanf(src1)      ; dst  = temp);
+    OPERATION(fasin , std::asinf(src1)      ; dst  = temp);
+    OPERATION(facos , std::acosf(src1)      ; dst  = temp);
+    OPERATION(fatan , std::atanf(src1)      ; dst  = temp);
     OPERATION(fsinh , std::sinhf(src1)      ; dst  = temp);
     OPERATION(fcosh , std::coshf(src1)      ; dst  = temp);
     OPERATION(ftanh , std::tanhf(src1)      ; dst  = temp);
