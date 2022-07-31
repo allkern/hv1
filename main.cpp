@@ -145,14 +145,33 @@ const char* bus_error_codes[] = {
     "HY_ENOTRECOVERABLE"
 };
 
-void sigint_print_cpu_status(int signal) {
-    std::cout << std::endl;
+void print_cpu_status_main() {
+    _log(info, "State:\nMain registers:");
 
-    if (cpu->id) {
-        _log(info, "%s killed! State:\nMain registers:", cpu->id);
-    } else {
-        _log(info, "CPU%u killed! State:\nMain registers:", cpu->core);
+    for (int r = 0; r < 32; r++) {
+        if (!(r % 4) && r) {
+            std::cout << std::endl;
+        }
+
+        std::string name = hyrisc_register_names[r];
+
+        std::cout << name << std::string(4 - name.size(), ' ') << ": "
+                  << "0x" << std::setw(8) << std::setfill('0') << std::hex << cpu->internal.r[r] << "  ";
     }
+
+    std::cout << "\nFlags      : ----"
+              << ((cpu->internal.st & 0b00001000) ? 'C' : 'c')
+              << ((cpu->internal.st & 0b00000100) ? 'V' : 'v')
+              << ((cpu->internal.st & 0b00000010) ? 'N' : 'n')
+              << ((cpu->internal.st & 0b00000001) ? 'Z' : 'z')
+              << std::endl;
+    std::cout << "Cycle      : " << std::dec << (int)cpu->internal.cycle << std::endl;
+    std::cout << "Instruction: " << std::setw(8) << std::setfill('0') << std::hex << cpu->internal.instruction << std::endl;
+    std::cout << "Link level : " << std::dec << cpu->internal.link_level << std::endl;
+}
+
+void print_cpu_status() {
+    _log(info, "State:\nMain registers:");
 
     for (int r = 0; r < 32; r++) {
         if (!(r % 4) && r) {
@@ -233,12 +252,107 @@ void sigint_print_cpu_status(int signal) {
     std::cout << "FREEZE: " << (cpu->ext.freeze ? "high" : "low") << std::endl;
     std::cout << "RESET : " << (cpu->ext.reset ? "high" : "low") << std::endl;
     std::cout << "VCC   : " << cpu->ext.vcc << std::endl;
+}
+
+void sigill_handler(int signal) {
+    if (cpu->id) {
+        _log(info, "%s executed an illegal instruction!", cpu->id);
+    } else {
+        _log(info, "CPU%u executed an illegal instruction!", cpu->core);
+    }
+
+    print_cpu_status();
 
     std::exit(1);
 }
 
-int main() {
-    std::signal(SIGINT, sigint_print_cpu_status);
+void sigint_handler(int signal) {
+    //std::cout << std::endl;
+
+    if (cpu->id) {
+        _log(info, "%s killed!", cpu->id);
+    } else {
+        _log(info, "CPU%u killed!", cpu->core);
+    }
+
+    print_cpu_status();
+
+    std::exit(0);
+}
+
+void sigbreak_handler(int signal) {
+    //std::cout << std::endl;
+
+    if (cpu->id) {
+        _log(info, "Break requested by %s!", cpu->id);
+    } else {
+        _log(info, "Break requested by CPU%u!", cpu->core);
+    }
+
+    print_cpu_status();
+
+    std::exit(0);
+}
+
+void sigfpe_handler(int signal) {
+    if (cpu->id) {
+        _log(info, "%s triggered a floating point exception!", cpu->id);
+    } else {
+        _log(info, "CPU%u triggered a floating point exception!", cpu->core);
+    }
+
+    print_cpu_status();
+
+    std::exit(0);
+}
+
+#include <chrono>
+
+class frequency_clock_t {
+    std::chrono::steady_clock::time_point m_start, m_end;
+
+    intmax_t m_period = std::chrono::steady_clock::period::den;
+    intmax_t m_frequency;
+
+public:
+    void set_frequency(intmax_t hz) {
+        m_frequency = hz;
+    }
+
+    void start() {
+        m_start = std::chrono::steady_clock::now();
+    }
+
+    bool tick() {
+        m_end = std::chrono::steady_clock::now();
+
+        if ((m_end - m_start).count() >= (m_period / m_frequency)) {
+            m_start = m_end;
+
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    frequency_clock_t(intmax_t hz) {
+        m_frequency = hz;
+
+        start();
+    }
+};
+
+constexpr double operator ""khz(unsigned long long hz) { return (double)hz * 1000.0; }
+constexpr double operator ""hz(unsigned long long hz) { return (double)hz; }
+constexpr double operator ""kihz(unsigned long long hz) { return (double)hz * 1024.0; }
+constexpr double operator ""mhz(unsigned long long hz) { return (double)hz * 1000000.0; }
+constexpr double operator ""mihz(unsigned long long hz) { return (double)hz * 1024.0 * 1024.0; }
+
+int main(int argc, const char* argv[]) {
+    std::signal(SIGFPE, sigfpe_handler);
+    std::signal(SIGINT, sigint_handler);
+    std::signal(SIGILL, sigill_handler);
+    std::signal(SIGBREAK, sigbreak_handler);
 
     _log::init("hyrisc");
 
@@ -249,7 +363,7 @@ int main() {
 
     bios.create(0x1000, 0x80000000);
     bios.init(&cpu->ext);
-    bios.load("bios.bin");
+    bios.load("biosloop.bin");
 
     flash.create(0x10000, 0x90000000);
     flash.init(&cpu->ext);
@@ -263,26 +377,56 @@ int main() {
 
     hyrisc_set_cpuid(cpu, "main-cpu", 0);
     hyrisc_pulse_reset(cpu, 0x80000000);
+    //pu->ext.bci.busirq = false;
 
     cpu->ext.vcc = 1.0f;
 
+    double cpu_freq = 5khz; // 1 KHz
+    double system_freq = 60; // 60 Hz
+
+    if (cpu_freq < 1000) {
+        _log(debug, "CPU frequency: %f Hz", cpu_freq);
+    } else if ((cpu_freq >= 1000) && (cpu_freq < 1000000)) {
+        _log(debug, "CPU frequency: %f KHz", cpu_freq / 1000);
+    } else {
+        _log(debug, "CPU frequency: %f MHz", cpu_freq / 1000000);
+    }
+
+    frequency_clock_t main((int)system_freq);
+
+    intmax_t cycles = 0;
+    intmax_t instructions = 0;
+
+    double fractional_cycles = 0;
+
+    int tick = 0;
+
     while (true) {
-        hyrisc_clock(cpu);
+        if (main.tick()) {
+            double base_cycles = (cpu_freq / system_freq) + fractional_cycles;
 
-        bios.update();
-        flash.update();
-        terminal.update();
-        memory.update();
+            int cycles = std::floor(base_cycles);
 
-        // _log(debug, "il=%08x r0=%08x gp0=%08x gp1=%08x a0=%08x pc=%08x, busreq=%u, busack=%u",
-        //     cpu->internal.instruction,
-        //     cpu->internal.r[r0],
-        //     cpu->internal.r[gp0],
-        //     cpu->internal.r[gp1],
-        //     cpu->internal.r[a0],
-        //     cpu->internal.r[pc],
-        //     cpu->ext.bci.busreq,
-        //     cpu->ext.bci.busack
-        // );
+            fractional_cycles = base_cycles - cycles;
+
+            for (int i = 0; i < (int)cycles; i++) {
+                if (!cpu->internal.cycle) instructions++;
+
+                hyrisc_clock(cpu);
+
+                bios.update();
+                flash.update();
+                terminal.update();
+                memory.update();
+            }
+
+            tick++;
+
+            if (tick == system_freq) {
+                //std::cout << "Instructions/s: " << instructions << '\r';
+                instructions = 0;
+                tick = 0;
+            }
+        }
     }
 }

@@ -49,9 +49,10 @@ public:
 
     hyu32_t read(hyu32_t addr, hyint_t size) override {
         switch (size) {
-            case 0: return read8(addr);
-            case 1: return read16(addr);
-            case 2: return read32(addr);
+            case AS_BYTE   : return read8(addr);
+            case AS_SHORT  : return read16(addr);
+            case AS_LONG   : return read32(addr);
+            case AS_EXECUTE: return read32(addr);
         }
 
         return 0x0;
@@ -59,9 +60,10 @@ public:
     
     void write(hyu32_t addr, hyu32_t value, hyint_t size) override {
         switch (size) {
-            case 0: { write8(addr, value); return; }
-            case 1: { write16(addr, value); return; }
-            case 2: { write32(addr, value); return; }
+            case AS_BYTE   : { write8(addr, value); return; }
+            case AS_SHORT  : { write16(addr, value); return; }
+            case AS_LONG   : { write32(addr, value); return; }
+            case AS_EXECUTE: { write32(addr, value); return; }
         }
     }
 

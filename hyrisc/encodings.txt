@@ -1,0 +1,45 @@
+CC   = 4 bits
+R    = 5 bits
+SZSM = 6 bits
+I8   = 8 bits
+I16  = 16 bits
+instruction         operands
+       CC           RX  RY  RZ  RW
+                            I8
+                        I16
+       SZ           RX  RY  RZ  SM  SZ
+opcode              r0, r1, r2, r3
+opcode              r0, r1, 0xab
+opcode              r0, 0xabcd
+opcode.size         r0, r1, r2, sm
+opcode.cond         0xabcd
+
+Encoding 4: iiiiiiii 11xxxxxy yyyyzzzz zwwwwwSS
+Encoding 3: iiiiiiii 10xxxxxy yyyyIIII IIIIssss
+Encoding 2: iiiiiiii 01xxxxxI IIIIIIII IIIIIII0
+Encoding 1: iiiiiiii 000ccccI IIIIIIII IIIIIII0
+
+opcode = BITS(0, 8)
+encoding = BITS(8, 2)
+fielda = BITS(10, 5)
+fieldb = BITS(15, 5)
+fieldc = BITS(20, 5)
+fieldd = BITS(25, 5)
+imm8 = BITS(20, 8)
+imm16 = BITS(15, 16)
+shift_mul = BITS(25, 5)
+size = BITS(30, 2)
+cond = BITS(10, 5)
+
+0xff load r0, r1
+0xfe load r0, [r1]
+0xfd l r4, [r1+r2*4]
+0xef store.l [r0+r2*5], r4
+0xef store.l [r27+r15*10], r7
+
+i------- e-x----y ----z--- -s----S-
+11101111 11001000 00000001 00010010
+ef       4 4    0     2     4    2
+e   f    c   8    0   1    1   2
+ef       c8       01       12
+efc80112

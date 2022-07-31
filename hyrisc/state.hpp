@@ -36,17 +36,32 @@ struct hyrisc_ext_t {
     hyfloat_t    vcc;
 };
 
+// Decoder latches
+struct hyrisc_decoder_t {
+    hyu8_t      opcode;         // Opcode
+    hyu8_t      encoding;       // Encoding
+    hyu8_t      fieldx;         // Bitfield X
+    hyu8_t      fieldy;         // Bitfield Y
+    hyu8_t      fieldz;         // Bitfield Z
+    hyu8_t      fieldw;         // Bitfield W
+    hyu8_t      size;           // Access size
+    hyu8_t      imm8;           // 8-bit immediate
+    hyu16_t     imm16;          // 16-bit immediate
+    // hyu8_t   cond;           // Condition code (Bitfield X)
+    // hyu8_t   shift_mul;      // Shift/multiply (Bitfield W)
+};
+
 // Internal data and latches
 struct hyrisc_int_t {
-    hyint_t     cycle;          // Cycle counter
-    hyu32_t     instruction;    // Instruction latch
-    hyu32_t     r[32];          // GPRs
-    hyint_t     last_cycles;    // Last cycles latch
-    hyfloat_t   f[32];          // FPRs and FPCSR
-    hyu8_t      opcode;         // Opcode latch
-    hyu8_t      st;             // State register
-    hybool_t    rw;             // Access type flag
-    hyint_t     link_level;     // Link register level
+    hyint_t          cycle;          // Cycle counter
+    hyu32_t          instruction;    // Instruction latch
+    hyu32_t          r[32];          // GPRs
+    hyint_t          last_cycles;    // Last cycles latch
+    hyfloat_t        f[32];          // FPRs and FPCSR
+    hyu8_t           st;             // State register
+    hybool_t         rw;             // Access type flag
+    hyint_t          link_level;     // Link register level
+    hyrisc_decoder_t decoder;
 };
 
 struct hyrisc_t {
