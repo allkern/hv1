@@ -71,8 +71,10 @@ public:
         this->proc = proc;
     }
 
-    void load(std::string fn) {
+    void load(std::string fn, bool strip_elf = false) {
         std::ifstream file(fn, std::ios::binary);
+
+        if (strip_elf) for (int i = 0; i < 0x34; i++) file.get();
 
         file.read((char*)buf.data(), buf.size());
     }

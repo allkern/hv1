@@ -34,6 +34,8 @@ class iobus_dev_pci_t : public iobus_device_t {
         for (pci_device_t* dev : devices)
             if ((dev->bus == bus) && (dev->device == device))
                 return dev;
+        
+        return nullptr;
     }
 
 public:
@@ -41,7 +43,10 @@ public:
     hyu8_t bus, device, function, reg;
     bool enable;
 
-    void register_device(pci_device_t* dev) {
+    void register_device(pci_device_t* dev, int bus, int device) {
+        dev->bus    = bus;
+        dev->device = device;
+
         devices.push_back(dev);
     }
 

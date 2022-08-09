@@ -3,3 +3,8 @@
 *.bin
 *.s
 main
+*.img
+*.elf
+as-new
+objdump
+timed.cpp

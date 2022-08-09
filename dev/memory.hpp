@@ -47,7 +47,7 @@ public:
         this->base = base;
     }
 
-    hyu32_t read(hyu32_t addr, hyint_t size) override {
+    hyu32_t read(hyu32_t addr, hyint_t size) {
         switch (size) {
             case 0: return read8(addr);
             case 1: return read16(addr);
@@ -57,7 +57,7 @@ public:
         return 0x0;
     }
     
-    void write(hyu32_t addr, hyu32_t value, hyint_t size) override {
+    void write(hyu32_t addr, hyu32_t value, hyint_t size) {
         switch (size) {
             case 0: { write8(addr, value); return; }
             case 1: { write16(addr, value); return; }

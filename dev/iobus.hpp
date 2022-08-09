@@ -5,9 +5,11 @@
 #include "device.hpp"
 #include "iobus/device.hpp"
 
+#include "../log.hpp"
+
 #include <vector>
 
-#define IN_RANGE(base, size) ((proc->bci.a >= base) && (proc->bci.a < (base + size)))
+#define IN_RANGE(base, size) ((proc->bci.a >= base) && (proc->bci.a <= (base + (size - 1))))
 #define IOBUS_PORT 0xfffffffe
 #define IOBUS_DATA 0xffffffff
 
@@ -17,15 +19,17 @@ class dev_iobus_t : public device_t {
 
     std::vector <iobus_device_t*> devices;
 
-    hyu32_t base = 0xfffffffe;
-    hyint_t size = 2;
+    uint32_t base = 0xfffffffe;
+    int size = 2;
 
 public:
-    void create(hyu32_t base) {
-        this->base = base;
+    void attach_device(iobus_device_t* dev) {
+        dev->init(&ext);
+
+        devices.push_back(dev);
     }
 
-    void init(hyrisc_ext_t* proc) {
+    void init(hyrisc_ext_t* proc, hyu32_t base = 0xfffffffe) {
         this->proc = proc;
 
         for (iobus_device_t* dev : devices)
@@ -41,8 +45,12 @@ public:
         switch (proc->bci.a) {
             case IOBUS_PORT: {
                 switch (proc->bci.rw) {
-                    case RW_WRITE: ext.port = proc->bci.d; break;
-                    case RW_READ : proc->bci.d = ext.port; break;
+                    case RW_WRITE: {
+                        ext.port = proc->bci.d;
+                    } break;
+                    case RW_READ : {
+                        proc->bci.d = ext.port;
+                    } break;
                 }
             } break;
 
@@ -51,6 +59,7 @@ public:
                     case RW_WRITE: {
                         ext.data = proc->bci.d;
                         ext.rw   = RW_WRITE;
+                        ext.size = proc->bci.s;
 
                         for (iobus_device_t* dev : devices)
                             dev->update();
@@ -58,6 +67,7 @@ public:
 
                     case RW_READ: {
                         ext.rw = RW_READ;
+                        ext.size = proc->bci.s;
 
                         for (iobus_device_t* dev : devices)
                             dev->update();

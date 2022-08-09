@@ -10,6 +10,9 @@
 #include "dev/terminal.hpp"
 #include "dev/memory.hpp"
 #include "dev/bios.hpp"
+#include "dev/iobus.hpp"
+#include "dev/iobus/pci.hpp"
+#include "dev/iobus/ata.hpp"
 
 hyrisc_t* cpu = new hyrisc_t;
 
@@ -275,7 +278,7 @@ void sigint_handler(int signal) {
         _log(info, "CPU%u killed!", cpu->core);
     }
 
-    print_cpu_status();
+    print_cpu_status_main();
 
     std::exit(0);
 }
@@ -306,47 +309,11 @@ void sigfpe_handler(int signal) {
     std::exit(0);
 }
 
-#include <chrono>
+std::vector <device_t*> hardware;
 
-class frequency_clock_t {
-    std::chrono::steady_clock::time_point m_start, m_end;
-
-    intmax_t m_period = std::chrono::steady_clock::period::den;
-    intmax_t m_frequency;
-
-public:
-    void set_frequency(intmax_t hz) {
-        m_frequency = hz;
-    }
-
-    void start() {
-        m_start = std::chrono::steady_clock::now();
-    }
-
-    bool tick() {
-        m_end = std::chrono::steady_clock::now();
-
-        if ((m_end - m_start).count() >= (m_period / m_frequency)) {
-            m_start = m_end;
-
-            return true;
-        } else {
-            return false;
-        }
-    }
-
-    frequency_clock_t(intmax_t hz) {
-        m_frequency = hz;
-
-        start();
-    }
+void add_hardware(device_t* dev) {
+    hardware.push_back(dev);
 };
-
-constexpr double operator ""khz(unsigned long long hz) { return (double)hz * 1000.0; }
-constexpr double operator ""hz(unsigned long long hz) { return (double)hz; }
-constexpr double operator ""kihz(unsigned long long hz) { return (double)hz * 1024.0; }
-constexpr double operator ""mhz(unsigned long long hz) { return (double)hz * 1000000.0; }
-constexpr double operator ""mihz(unsigned long long hz) { return (double)hz * 1024.0 * 1024.0; }
 
 int main(int argc, const char* argv[]) {
     std::signal(SIGFPE, sigfpe_handler);
@@ -356,77 +323,64 @@ int main(int argc, const char* argv[]) {
 
     _log::init("hyrisc");
 
-    dev_flash_t flash;
     dev_terminal_t terminal;
-    dev_memory_t memory;
+    //dev_memory_t memory;
     dev_bios_t bios;
 
     bios.create(0x1000, 0x80000000);
     bios.init(&cpu->ext);
-    bios.load("biosloop.bin");
+    bios.load("pci.elf", true);
 
-    flash.create(0x10000, 0x90000000);
-    flash.init(&cpu->ext);
-    flash.load("program.bin");
+    // flash.create(0x10000, 0x90000000);
+    // flash.init(&cpu->ext);
+    // flash.load("program.bin");
 
     terminal.create(0xa0000000);
     terminal.init(&cpu->ext);
 
-    memory.create(0x10000, 0x10000000);
-    memory.init(&cpu->ext);
+    dev_iobus_t iobus;
+    iobus_dev_pci_t pci;
+    iobus_dev_ata_t ide;
+
+
+    /*           a0000000    fffffffe
+    System bus -----+------------+-
+                    |            |        1f0   cf8
+                    terminal     iobus ----+-----+--------
+                                           |     |
+                                           ide   pci -+-----------
+                                           |          |
+                                           +--------> bus 0, device 0
+    */
+
+    iobus.init(&cpu->ext);
+    iobus.attach_device(&pci);
+    iobus.attach_device(&ide);
+    pci.register_device(ide.get_pci_desc(), 0, 0);
+
+    if (!ide.attach_drive("test.img", ATA_PRI_MASTER)) {
+        _log(error, "Couldn't attach drive with image \"%s\" to ATA channel", "test.img");
+    }
+
+    add_hardware(&terminal);
+    add_hardware(&iobus);
+    add_hardware(&bios);
+
+    // memory.create(0x10000, 0x10000000);
+    // memory.init(&cpu->ext);
 
     hyrisc_set_cpuid(cpu, "main-cpu", 0);
     hyrisc_pulse_reset(cpu, 0x80000000);
-    //pu->ext.bci.busirq = false;
 
+    cpu->ext.bci.busirq = false;
     cpu->ext.vcc = 1.0f;
 
-    double cpu_freq = 5khz; // 1 KHz
-    double system_freq = 60; // 60 Hz
-
-    if (cpu_freq < 1000) {
-        _log(debug, "CPU frequency: %f Hz", cpu_freq);
-    } else if ((cpu_freq >= 1000) && (cpu_freq < 1000000)) {
-        _log(debug, "CPU frequency: %f KHz", cpu_freq / 1000);
-    } else {
-        _log(debug, "CPU frequency: %f MHz", cpu_freq / 1000000);
-    }
-
-    frequency_clock_t main((int)system_freq);
-
-    intmax_t cycles = 0;
-    intmax_t instructions = 0;
-
-    double fractional_cycles = 0;
-
-    int tick = 0;
-
     while (true) {
-        if (main.tick()) {
-            double base_cycles = (cpu_freq / system_freq) + fractional_cycles;
-
-            int cycles = std::floor(base_cycles);
-
-            fractional_cycles = base_cycles - cycles;
-
-            for (int i = 0; i < (int)cycles; i++) {
-                if (!cpu->internal.cycle) instructions++;
-
-                hyrisc_clock(cpu);
-
-                bios.update();
-                flash.update();
-                terminal.update();
-                memory.update();
-            }
-
-            tick++;
-
-            if (tick == system_freq) {
-                //std::cout << "Instructions/s: " << instructions << '\r';
-                instructions = 0;
-                tick = 0;
-            }
-        }
+        hyrisc_clock(cpu);
+        
+        for (device_t* dev : hardware)
+            dev->update();
     }
+
+    print_cpu_status_main();
 }

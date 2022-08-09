@@ -56,7 +56,7 @@ public:
         this->base = base;
     }
 
-    hyu32_t read(hyu32_t addr, hyint_t size) override {
+    hyu32_t read(hyu32_t addr, hyint_t size) {
         switch (addr) {
             case 0x0: return 0x0;
             case 0x1: return getchar();
@@ -65,7 +65,7 @@ public:
         return 0x0;
     }
     
-    void write(hyu32_t addr, hyu32_t value, hyint_t size) override {
+    void write(hyu32_t addr, hyu32_t value, hyint_t size) {
         if (addr == 0x0) {
             std::cout << (char)(value & 0xff);
         }
