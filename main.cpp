@@ -170,7 +170,7 @@ void print_cpu_status_main() {
               << std::endl;
     std::cout << "Cycle      : " << std::dec << (int)cpu->internal.cycle << std::endl;
     std::cout << "Instruction: " << std::setw(8) << std::setfill('0') << std::hex << cpu->internal.instruction << std::endl;
-    std::cout << "Link level : " << std::dec << cpu->internal.link_level << std::endl;
+    //std::cout << "Link level : " << std::dec << cpu->internal.link_level << std::endl;
 }
 
 void print_cpu_status() {
@@ -195,7 +195,7 @@ void print_cpu_status() {
               << std::endl;
     std::cout << "Cycle      : " << std::dec << cpu->internal.cycle << std::endl;
     std::cout << "Instruction: " << std::setw(8) << std::setfill('0') << std::hex << cpu->internal.instruction << std::endl;
-    std::cout << "Link level : " << std::dec << cpu->internal.link_level << std::endl;
+    //std::cout << "Link level : " << std::dec << cpu->internal.link_level << std::endl;
 
     std::cout << "\nFloating Point registers:\n";
 

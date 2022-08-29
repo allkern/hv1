@@ -547,6 +547,7 @@ void hyrisc_decode(hyrisc_t* proc) {
 #define I16  (proc->internal.decoder.imm16)
 #define SIZE (proc->internal.decoder.size)
 #define COND (proc->internal.decoder.fieldx)
+#define I10              (I5Z | (I5W << 5))
 #define INDEXED_MULTIPLY (REGY + (REGZ * I5W))
 #define INDEXED_SHIFT    (REGY + (REGZ << I5W))
 
@@ -602,6 +603,38 @@ bool hyrisc_execute(hyrisc_t* proc, hyint_t cycle) {
             }
         } break;
 
+        case HY_LOADFA: {
+            switch (cycle) {
+                case 0: {
+                    hyrisc_init_read(proc, REGY + I10, SIZE);
+
+                    return false;
+                } break;
+
+                case 1: {
+                    hyrisc_do_read(REGX);
+
+                    return true;
+                } break;
+            }
+        } break;
+
+        case HY_LOADFS: {
+            switch (cycle) {
+                case 0: {
+                    hyrisc_init_read(proc, REGY - I10, SIZE);
+
+                    return false;
+                } break;
+
+                case 1: {
+                    hyrisc_do_read(REGX);
+
+                    return true;
+                } break;
+            }
+        } break;
+
         case HY_STOREM: {
             switch (cycle) {
                 case 0: {
@@ -622,6 +655,38 @@ bool hyrisc_execute(hyrisc_t* proc, hyint_t cycle) {
             switch (cycle) {
                 case 0: {
                     hyrisc_init_write(proc, INDEXED_SHIFT, REGX, SIZE);
+
+                    return false;
+                } break;
+
+                case 1: {
+                    hyrisc_bus_wait;
+
+                    return true;
+                } break;
+            }
+        } break;
+
+        case HY_STOREFA: {
+            switch (cycle) {
+                case 0: {
+                    hyrisc_init_write(proc, REGY + I10, REGX, SIZE);
+
+                    return false;
+                } break;
+
+                case 1: {
+                    hyrisc_bus_wait;
+
+                    return true;
+                } break;
+            }
+        } break;
+        
+        case HY_STOREFS: {
+            switch (cycle) {
+                case 0: {
+                    hyrisc_init_write(proc, REGY - I10, REGX, SIZE);
 
                     return false;
                 } break;
