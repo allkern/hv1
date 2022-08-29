@@ -60,7 +60,6 @@ struct hyrisc_int_t {
     hyfloat_t        f[32];          // FPRs and FPCSR
     hyu8_t           st;             // State register
     hybool_t         rw;             // Access type flag
-    hyint_t          link_level;     // Link register level
     hyrisc_decoder_t decoder;
 };
 

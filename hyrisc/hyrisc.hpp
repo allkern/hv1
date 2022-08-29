@@ -17,25 +17,25 @@
 #include <iostream>
 
 enum hyrisc_register_names_t {
-    r0  , gp0 , gp1 , gp2 ,
-    gp3 , gp4 , gp5 , gp6 ,
-    gp7 , gp8 , gp9 , gp10,
-    gp11, gp12, gp13, gp14,
-    a0  , a1  , a2  , rr0 ,
-    a3  , a4  , a5  , rr1 ,
-    lr0 , lr1 , lr2 , lr3 ,
-    ir  , br  , sp  , pc
+    r0 , r1 , r2 , r3 ,
+    r4 , r5 , r6 , r7 ,
+    r8 , r9 , r10, r11,
+    r12, r13, r14, r15,
+    r16, r17, r18, r19,
+    r20, r21, r22, r23,
+    r24, r25, r26, r27,
+    r28, lr , sp , pc
 };
 
 const char* hyrisc_register_names[] = {
-    "r0"  , "gp0" , "gp1" , "gp2" ,
-    "gp3" , "gp4" , "gp5" , "gp6" ,
-    "gp7" , "gp8" , "gp9" , "gp10",
-    "gp11", "gp12", "gp13", "gp14",
-    "a0"  , "a1"  , "a2"  , "rr0" ,
-    "a3"  , "a4"  , "a5"  , "rr1" ,
-    "lr0" , "lr1" , "lr2" , "lr3" ,
-    "ir"  , "br"  , "sp"  , "pc"
+    "r0" , "r1" , "r2" , "r3" ,
+    "r4" , "r5" , "r6" , "r7" ,
+    "r8" , "r9" , "r10", "r11",
+    "r12", "r13", "r14", "r15",
+    "r16", "r17", "r18", "r19",
+    "r20", "r21", "r22", "r23",
+    "r24", "r25", "r26", "r27",
+    "r28", "fp" , "sp" , "pc"
 };
 
 void hyrisc_bci_update(hyrisc_t* proc) {
@@ -248,10 +248,14 @@ enum hyrisc_opcodes_t {
     HY_LUI       = 0xfd,
     HY_LOADM     = 0xfc, // LOAD Multiply
     HY_LOADS     = 0xfb, // LOAD Shift
-    HY_STOREM    = 0xfa, // STORE Multiply
-    HY_STORES    = 0xf9, // STORE Shift
-    HY_LEAM      = 0xf8, // LEA Multiply
-    HY_LEAS      = 0xf7, // LEA Shift
+    HY_LOADFA    = 0xfa, // LOAD Fixed Add
+    HY_LOADFS    = 0xf9, // LOAD Fixed Sub
+    HY_STOREM    = 0xf8, // STORE Multiply
+    HY_STORES    = 0xf7, // STORE Shift
+    HY_STOREFA   = 0xf6, // STORE Fixed Add
+    HY_STOREFS   = 0xf5, // STORE Fixed Sub
+    HY_LEAM      = 0xf4, // LEA Multiply
+    HY_LEAS      = 0xf3, // LEA Shift
     HY_ADDR      = 0xef, // ADD Register
     HY_ADDUI8    = 0xee, // ADD Unsigned Immediate 8
     HY_ADDUI16   = 0xed, // ADD Unsigned Immediate 16
@@ -399,10 +403,14 @@ proc->ext.bci.busack = false;
     0xfd    lui             r0, 0xabcd       2   lui     r5, 0xbeef
     0xfc    load.{b,s,l,x}  r0, [r1+r2*i5]   4   load.b  r3, [r6+r19*23]
     0xfb    load.{b,s,l,x}  r0, [r1+r2:i5]   4   load.b  r3, [r6+r19:23]
-    0xfa    store.{b,s,l,x} [r1+r2*i5], r0   4   store.b [r6+r24*4], r6
-    0xf9    store.{b,s,l,x} [r1+r2:i5], r0   4   store.b [r6+r24:4], r6
-    0xf8    lea             r0, [r1+r2*i5]   4   lea     r3, [r6+r19*23]
-    0xf7    lea             r0, [r1+r2:i5]   4   lea     r3, [r6+r19:23]
+    0xfa    load.{b,s,l,x}  r0, [r1+i10]     4   load.b  r3, [r6+21]
+    0xf9    load.{b,s,l,x}  r0, [r1-i10]     4   load.b  r3, [r6-21]
+    0xf8    store.{b,s,l,x} [r1+r2*i5], r0   4   store.b [r6+r24*4], r6
+    0xf7    store.{b,s,l,x} [r1+r2:i5], r0   4   store.b [r6+r24:4], r6
+    0xf6    store.{b,s,l,x} [r1+i10], r0     4   store.b [r6+21], r6
+    0xf5    store.{b,s,l,x} [r1-i10], r0     4   store.b [r6-21], r6
+    0xf4    lea             r0, [r1+r2*i5]   4   lea     r3, [r6+r19*23]
+    0xf3    lea             r0, [r1+r2:i5]   4   lea     r3, [r6+r19:23]
     0xef    addu            r0, r1, r2       4   addu    r5, r7, r12
     0xee    addu            r0, r1, i8       3   addu    r5, r7, 0xab
     0xed    addu            r0, i16          2   addu    r5, 0xdead
@@ -726,7 +734,7 @@ bool hyrisc_execute(hyrisc_t* proc, hyint_t cycle) {
 
         case HY_JALCCM: {
             if (hyrisc_test_condition(proc, COND)) {
-                proc->internal.r[lr0 + (proc->internal.link_level++)] = proc->internal.r[pc];
+                proc->internal.r[lr] = proc->internal.r[pc];
                 proc->internal.r[pc] = INDEXED_MULTIPLY;
             }
 
@@ -735,7 +743,7 @@ bool hyrisc_execute(hyrisc_t* proc, hyint_t cycle) {
 
         case HY_JALCCS: {
             if (hyrisc_test_condition(proc, COND)) {
-                proc->internal.r[lr0 + (proc->internal.link_level++)] = proc->internal.r[pc];
+                proc->internal.r[lr] = proc->internal.r[pc];
                 proc->internal.r[pc] = INDEXED_SHIFT;
             }
 
@@ -817,7 +825,7 @@ bool hyrisc_execute(hyrisc_t* proc, hyint_t cycle) {
 
         case HY_RTLCC: {
             if (hyrisc_test_condition(proc, COND)) {
-                proc->internal.r[pc] = proc->internal.r[lr0 + (--proc->internal.link_level)];
+                proc->internal.r[pc] = proc->internal.r[lr];
             }
 
             return true;
