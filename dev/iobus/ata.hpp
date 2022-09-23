@@ -688,7 +688,6 @@ class iobus_dev_ata_t : public iobus_device_t {
     void ata_io_handle_data() {
         if (!CURRENT_DRIVE.rw_pending_bytes) return;
 
-
         switch (iobus->rw) {
             case RW_READ: {
                 if (CURRENT_DRIVE.rw_direction != RW_READ) {

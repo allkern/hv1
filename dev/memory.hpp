@@ -52,6 +52,7 @@ public:
             case 0: return read8(addr);
             case 1: return read16(addr);
             case 2: return read32(addr);
+            case 3: return read32(addr);
         }
 
         return 0x0;
@@ -62,6 +63,7 @@ public:
             case 0: { write8(addr, value); return; }
             case 1: { write16(addr, value); return; }
             case 2: { write32(addr, value); return; }
+            case 3: { write32(addr, value); return; }
         }
     }
 
@@ -70,7 +72,7 @@ public:
     }
 
     void update() override {
-        bool address_in_range = (proc->bci.a >= base) && (proc->bci.a <= (base + phys.size()));
+        bool address_in_range = (proc->bci.a >= base) && (proc->bci.a < (base + phys.size()));
 
         if (!address_in_range) return;
         if (!proc->bci.busreq) return;

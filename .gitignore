@@ -1,4 +1,7 @@
 .vscode/
+binutils/
+bin/
+a.out
 *.exe
 *.bin
 *.s
@@ -8,3 +11,4 @@ main
 as-new
 objdump
 timed.cpp
+*.hs

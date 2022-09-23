@@ -158,7 +158,7 @@ void print_cpu_status_main() {
 
         std::string name = hyrisc_register_names[r];
 
-        std::cout << name << std::string(4 - name.size(), ' ') << ": "
+        std::cout << name << std::string(3 - name.size(), ' ') << ": "
                   << "0x" << std::setw(8) << std::setfill('0') << std::hex << cpu->internal.r[r] << "  ";
     }
 
@@ -270,21 +270,22 @@ void sigill_handler(int signal) {
 }
 
 void sigint_handler(int signal) {
-    //std::cout << std::endl;
+    _log(debug, "a0=%u (%08x)", cpu->internal.r[24], cpu->internal.r[24]);
 
-    if (cpu->id) {
-        _log(info, "%s killed!", cpu->id);
-    } else {
-        _log(info, "CPU%u killed!", cpu->core);
-    }
+    // if (cpu->id) {
+    //     _log(info, "%s killed!", cpu->id);
+    // } else {
+    //     _log(info, "CPU%u killed!", cpu->core);
+    // }
 
-    print_cpu_status_main();
+    // print_cpu_status_main();
 
     std::exit(0);
 }
 
+#ifdef _WIN32
 void sigbreak_handler(int signal) {
-    //std::cout << std::endl;
+    _log(debug, "a0=%u (%08x)", cpu->internal.r[24], cpu->internal.r[24]);
 
     if (cpu->id) {
         _log(info, "Break requested by %s!", cpu->id);
@@ -292,10 +293,11 @@ void sigbreak_handler(int signal) {
         _log(info, "Break requested by CPU%u!", cpu->core);
     }
 
-    print_cpu_status();
+    print_cpu_status_main();
 
     std::exit(0);
 }
+#endif
 
 void sigfpe_handler(int signal) {
     if (cpu->id) {
@@ -319,17 +321,23 @@ int main(int argc, const char* argv[]) {
     std::signal(SIGFPE, sigfpe_handler);
     std::signal(SIGINT, sigint_handler);
     std::signal(SIGILL, sigill_handler);
+
+#ifdef _WIN32
     std::signal(SIGBREAK, sigbreak_handler);
+#endif
 
     _log::init("hyrisc");
 
     dev_terminal_t terminal;
-    //dev_memory_t memory;
+    dev_memory_t memory;
     dev_bios_t bios;
 
-    bios.create(0x1000, 0x80000000);
+    bios.create(0x1000, 0x00000000);
     bios.init(&cpu->ext);
-    bios.load("pci.elf", true);
+    bios.load("a.out", false);
+
+    memory.create(0x10000, 0x7fff0000);
+    memory.init(&cpu->ext);
 
     // flash.create(0x10000, 0x90000000);
     // flash.init(&cpu->ext);
@@ -341,7 +349,6 @@ int main(int argc, const char* argv[]) {
     dev_iobus_t iobus;
     iobus_dev_pci_t pci;
     iobus_dev_ata_t ide;
-
 
     /*           a0000000    fffffffe
     System bus -----+------------+-
@@ -365,19 +372,31 @@ int main(int argc, const char* argv[]) {
     add_hardware(&terminal);
     add_hardware(&iobus);
     add_hardware(&bios);
-
-    // memory.create(0x10000, 0x10000000);
-    // memory.init(&cpu->ext);
+    add_hardware(&memory);
 
     hyrisc_set_cpuid(cpu, "main-cpu", 0);
-    hyrisc_pulse_reset(cpu, 0x80000000);
+    hyrisc_pulse_reset(cpu, 0x00000000);
 
     cpu->ext.bci.busirq = false;
     cpu->ext.vcc = 1.0f;
 
-    while (true) {
+    int instructions = 150;
+
+    while (instructions) {
+        // if (!cpu->internal.cycle) {
+        //     _log(debug, "PC=%08x, SP=%08x, FP=%08x, R1=%08x, R2=%08x",
+        //         cpu->internal.r[pc],
+        //         cpu->internal.r[sp],
+        //         cpu->internal.r[29],
+        //         cpu->internal.r[1],
+        //         cpu->internal.r[2]
+        //     );
+
+        //     instructions--;
+        // }
+
         hyrisc_clock(cpu);
-        
+
         for (device_t* dev : hardware)
             dev->update();
     }

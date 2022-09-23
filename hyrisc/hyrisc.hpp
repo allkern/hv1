@@ -256,6 +256,8 @@ enum hyrisc_opcodes_t {
     HY_STOREFS   = 0xf5, // STORE Fixed Sub
     HY_LEAM      = 0xf4, // LEA Multiply
     HY_LEAS      = 0xf3, // LEA Shift
+    HY_LEAFA     = 0xf2, // LEA Fixed Add
+    HY_LEAFS     = 0xf1, // LEA Fixed Sub
     HY_ADDR      = 0xef, // ADD Register
     HY_ADDUI8    = 0xee, // ADD Unsigned Immediate 8
     HY_ADDUI16   = 0xed, // ADD Unsigned Immediate 16
@@ -711,6 +713,18 @@ bool hyrisc_execute(hyrisc_t* proc, hyint_t cycle) {
             return true;
         } break;
 
+        case HY_LEAFA: {
+            REGX = REGY + I10;
+
+            return true;
+        } break;
+        
+        case HY_LEAFS: {
+            REGX = REGY - I10;
+
+            return true;
+        } break;
+
         case HY_ADDR   : { alu::perform_operation(proc, REGX, REGY, REGZ, alu::HY_addu); return true; } break;
         case HY_ADDUI8 : { alu::perform_operation(proc, REGX, REGY, I8  , alu::HY_addu); return true; } break;
         case HY_ADDUI16: { alu::perform_operation(proc, REGX, REGX, I16 , alu::HY_addu); return true; } break;
@@ -962,7 +976,11 @@ bool hyrisc_execute(hyrisc_t* proc, hyint_t cycle) {
         // Debug instruction!
         // Break into host
         case 0x45: {
+#ifdef _WIN32
             std::raise(SIGBREAK);
+#else
+            std::raise(SIGINT);
+#endif
         } break;
 
         // Any other instructions are considered illegal

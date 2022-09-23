@@ -11,7 +11,7 @@
 #ifdef _WIN32
 #include <conio.h>
 
-int getchar() {
+int getchar_impl() {
     if (_kbhit()) {
         return _getch();
     } else {
@@ -25,7 +25,7 @@ int getchar() {
 #include "termios.h"
 #include "unistd.h"
 
-int getchar() {
+int getchar_impl() {
     int c;
  
     static termios oldt, newt;
@@ -38,7 +38,7 @@ int getchar() {
 
     tcsetattr(STDIN_FILENO, TCSANOW, &newt);
 
-    c = std::getchar();
+    c = getchar();
 
     tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
 
@@ -59,7 +59,7 @@ public:
     hyu32_t read(hyu32_t addr, hyint_t size) {
         switch (addr) {
             case 0x0: return 0x0;
-            case 0x1: return getchar();
+            case 0x1: return getchar_impl();
         }
 
         return 0x0;
