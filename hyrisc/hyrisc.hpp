@@ -790,13 +790,13 @@ bool hyrisc_execute(hyrisc_t* proc, hyint_t cycle) {
 
         case HY_TST: { alu::perform_operation(proc, REGX, I5Y, 0, alu::HY_tst); return true; } break;
         
-        case HY_LSLR  : { alu::perform_operation(proc, REGX, REGX, REGY, alu::HY_lsl); return true; } break;
+        case HY_LSLR  : { alu::perform_operation(proc, REGX, REGY, REGZ, alu::HY_lsl); return true; } break;
         case HY_LSLI16: { alu::perform_operation(proc, REGX, REGX, I16 , alu::HY_lsl); return true; } break;
-        case HY_LSRR  : { alu::perform_operation(proc, REGX, REGX, REGY, alu::HY_lsr); return true; } break;
+        case HY_LSRR  : { alu::perform_operation(proc, REGX, REGY, REGZ, alu::HY_lsr); return true; } break;
         case HY_LSRI16: { alu::perform_operation(proc, REGX, REGX, I16 , alu::HY_lsr); return true; } break;
-        case HY_ASLR  : { alu::perform_operation(proc, REGX, REGX, REGY, alu::HY_asl); return true; } break;
+        case HY_ASLR  : { alu::perform_operation(proc, REGX, REGY, REGZ, alu::HY_asl); return true; } break;
         case HY_ASLI16: { alu::perform_operation(proc, REGX, REGX, I16 , alu::HY_asl); return true; } break;
-        case HY_ASRR  : { alu::perform_operation(proc, REGX, REGX, REGY, alu::HY_asr); return true; } break;
+        case HY_ASRR  : { alu::perform_operation(proc, REGX, REGY, REGZ, alu::HY_asr); return true; } break;
         case HY_ASRI16: { alu::perform_operation(proc, REGX, REGX, I16 , alu::HY_asr); return true; } break;
         
         case HY_BCCS: { if (hyrisc_test_condition(proc, COND)) proc->internal.r[pc] += ( int32_t)( int16_t)I16; return true; } break;
